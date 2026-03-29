@@ -9,37 +9,137 @@ import {
 
 export const widgetDefinition = defineWidget({
   parameters: {
-    // ---- Mode switch ----
+    // ---- Chọn dạng bài ----
     mode: param
-      .select(["fill", "choice"] as const, "fill")
-      .label("Giao diện")
-      .description("fill = Điền đáp án, choice = Chọn đáp án")
+      .select(
+        ["find-one", "select-all-ones", "count-ones", "judge-count"] as const,
+        "find-one",
+      )
+      .label("Dạng bài")
+      .description(
+        "find-one: tìm 1 số, select-all-ones: chọn tất cả số mục tiêu, count-ones: đếm số lượng, judge-count: đúng/sai",
+      )
       .random(),
 
-    // ---- Chung cho cả 2 mode ----
-    question: param.string("Tính kết quả phép cộng sau:").label("Đề bài"),
+    // ---- Chung cho mọi dạng ----
+    targetNumber: param
+      .number(1)
+      .label("Số mục tiêu")
+      .description("Nên để random để luyện nhận dạng số từ 1 đến 9")
+      .min(1)
+      .max(9)
+      .random(),
 
-    num1: param.number(0).label("Số thứ nhất").min(1).max(999).random(),
-    num2: param.number(0).label("Số thứ hai").min(1).max(999).random(),
+    customPrompt: param
+      .string("")
+      .label("Đề bài tùy chỉnh")
+      .description("Để trống sẽ dùng đề bài mặc định theo dạng bài"),
 
-    // ---- Riêng mode FILL ----
-    fillSettings: folder("Cài đặt - Điền đáp án", {
-      showPlaceholder: param.boolean(true).label("Hiện placeholder"),
-      placeholder: param
-        .string("Nhập đáp án...")
-        .label("Placeholder")
-        .visibleIf(when("fillSettings.showPlaceholder").equals(true)),
-    })
-      .expanded(false)
-      .visibleIf(when("mode").equals("fill")),
+    boardNumberMin: param
+      .number(1)
+      .label("Số nhỏ nhất trong bảng")
+      .min(1)
+      .max(9),
+    boardNumberMax: param
+      .number(9)
+      .label("Số lớn nhất trong bảng")
+      .min(1)
+      .max(9),
 
-    // ---- Riêng mode CHOICE ----
-    choiceSettings: folder("Cài đặt - Chọn đáp án", {
-      numberOfOptions: param.number(4).label("Số lượng đáp án").min(2).max(6),
+    // ---- Dạng 1: Đâu là số mục tiêu ----
+    findOneSettings: folder("Cài đặt - Dạng 1", {
+      distractorCount: param
+        .number(3)
+        .label("Số lượng đáp án gây nhiễu")
+        .min(1)
+        .max(8),
+
       shuffleOptions: param.boolean(true).label("Xáo trộn đáp án"),
     })
       .expanded(false)
-      .visibleIf(when("mode").equals("choice")),
+      .visibleIf(when("mode").equals("find-one")),
+
+    // ---- Dạng 2: Chọn tất cả số mục tiêu ----
+    selectAllSettings: folder("Cài đặt - Dạng 2", {
+      totalDigits: param
+        .number(14)
+        .label("Tổng số ký tự trong bảng")
+        .min(6)
+        .max(30),
+
+      minTargetCount: param
+        .number(2)
+        .label("Số mục tiêu nhỏ nhất")
+        .min(1)
+        .max(10),
+
+      maxTargetCount: param
+        .number(5)
+        .label("Số mục tiêu lớn nhất")
+        .min(1)
+        .max(12),
+    })
+      .expanded(false)
+      .visibleIf(when("mode").equals("select-all-ones")),
+
+    // ---- Dạng 3: Đếm số mục tiêu ----
+    countSettings: folder("Cài đặt - Dạng 3", {
+      totalDigits: param
+        .number(15)
+        .label("Tổng số ký tự trong bảng")
+        .min(6)
+        .max(30),
+
+      minTargetCount: param
+        .number(2)
+        .label("Số mục tiêu nhỏ nhất")
+        .min(1)
+        .max(10),
+
+      maxTargetCount: param
+        .number(6)
+        .label("Số mục tiêu lớn nhất")
+        .min(1)
+        .max(12),
+
+      showPlaceholder: param.boolean(true).label("Hiện placeholder"),
+      placeholder: param
+        .string("Nhập số lượng...")
+        .label("Placeholder")
+        .visibleIf(when("countSettings.showPlaceholder").equals(true)),
+    })
+      .expanded(false)
+      .visibleIf(when("mode").equals("count-ones")),
+
+    // ---- Dạng 4: Đúng/Sai số lượng (sáng tạo thêm) ----
+    judgeSettings: folder("Cài đặt - Dạng 4", {
+      totalDigits: param
+        .number(12)
+        .label("Tổng số ký tự trong bảng")
+        .min(6)
+        .max(30),
+
+      minTargetCount: param
+        .number(2)
+        .label("Số mục tiêu nhỏ nhất")
+        .min(1)
+        .max(10),
+
+      maxTargetCount: param
+        .number(6)
+        .label("Số mục tiêu lớn nhất")
+        .min(1)
+        .max(12),
+
+      maxOffset: param
+        .number(2)
+        .label("Sai lệch tối đa của mệnh đề")
+        .description("Dùng khi tạo mệnh đề sai")
+        .min(1)
+        .max(4),
+    })
+      .expanded(false)
+      .visibleIf(when("mode").equals("judge-count")),
 
     // ---- Phản hồi ----
     feedback: folder("Phản hồi", {
@@ -56,10 +156,10 @@ export const widgetDefinition = defineWidget({
   },
 
   deriveDefaults: (defaults, { randomInt }) => {
-    const max = defaults.mode === "choice" ? 50 : 200;
+    const min = Math.min(defaults.boardNumberMin, defaults.boardNumberMax);
+    const max = Math.max(defaults.boardNumberMin, defaults.boardNumberMax);
     return {
-      num1: randomInt(1, max),
-      num2: randomInt(1, max),
+      targetNumber: randomInt(min, max),
     };
   },
 
