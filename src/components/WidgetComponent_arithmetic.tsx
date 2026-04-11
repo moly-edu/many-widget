@@ -385,6 +385,9 @@ export function WidgetComponentArithmetic() {
                 onClick={openSupportModal}
                 className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-700 text-sm font-semibold hover:bg-amber-100"
               >
+                <span aria-hidden="true" className="mr-1">
+                  🛟
+                </span>
                 Hỗ trợ
               </button>
 
@@ -393,6 +396,9 @@ export function WidgetComponentArithmetic() {
                 onClick={() => setAnswerMethodModalOpen(true)}
                 className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-indigo-700 text-sm font-semibold hover:bg-indigo-100"
               >
+                <span aria-hidden="true" className="mr-1">
+                  ⌨️
+                </span>
                 Phương thức điền
               </button>
 

@@ -15,6 +15,8 @@ import { compareWidgetDefinition } from "./definition_compare";
 import { WidgetComponentCompare } from "./components/WidgetComponent_compare";
 import { arithmeticWidgetDefinition } from "./definition_arithmetic";
 import { WidgetComponentArithmetic } from "./components/WidgetComponent_arithmetic";
+import { arithmeticMatchWidgetDefinition } from "./definition_arithmetic_match";
+import { WidgetComponentArithmeticMatch } from "./components/WidgetComponent_arithmetic_match";
 
 type ActiveWidget =
   | "number-recognition"
@@ -24,7 +26,8 @@ type ActiveWidget =
   | "tangram"
   | "counting-10"
   | "compare-10"
-  | "arithmetic-1-9";
+  | "arithmetic-1-9"
+  | "arithmetic-match";
 
 // Đổi bằng env khi chạy dev/build, ví dụ: VITE_ACTIVE_WIDGET=tangram
 const envWidget = import.meta.env.VITE_ACTIVE_WIDGET;
@@ -37,9 +40,10 @@ const activeWidget: ActiveWidget =
   envWidget === "tangram" ||
   envWidget === "counting-10" ||
   envWidget === "compare-10" ||
-  envWidget === "arithmetic-1-9"
+  envWidget === "arithmetic-1-9" ||
+  envWidget === "arithmetic-match"
     ? envWidget
-    : "arithmetic-1-9";
+    : "arithmetic-match";
 
 if (activeWidget === "number-recognition") {
   createWidget({
@@ -75,6 +79,11 @@ if (activeWidget === "number-recognition") {
   createWidget({
     definition: compareWidgetDefinition,
     component: WidgetComponentCompare,
+  });
+} else if (activeWidget === "arithmetic-match") {
+  createWidget({
+    definition: arithmeticMatchWidgetDefinition,
+    component: WidgetComponentArithmeticMatch,
   });
 } else {
   createWidget({
