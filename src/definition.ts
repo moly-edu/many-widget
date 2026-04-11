@@ -21,6 +21,13 @@ export const widgetDefinition = defineWidget({
       )
       .random(),
 
+    difficulty: param
+      .select(["easy", "medium", "hard"] as const, "medium")
+      .label("Độ khó")
+      .description(
+        "Host sẽ đồng bộ 2 chiều giữa độ khó và các tham số chi tiết để test trước khi tích hợp DB.",
+      ),
+
     // ---- Chung cho mọi dạng ----
     targetNumber: param
       .number(1)
@@ -28,6 +35,8 @@ export const widgetDefinition = defineWidget({
       .description("Nên để random để luyện nhận dạng số từ 1 đến 9")
       .min(1)
       .max(9)
+      // .minFrom("boardNumberMin")
+      // .maxFrom("boardNumberMax")
       .random(),
 
     customPrompt: param
@@ -39,12 +48,14 @@ export const widgetDefinition = defineWidget({
       .number(1)
       .label("Số nhỏ nhất trong bảng")
       .min(1)
-      .max(9),
+      .max(9)
+      .maxFrom("boardNumberMax"),
     boardNumberMax: param
       .number(9)
       .label("Số lớn nhất trong bảng")
       .min(1)
-      .max(9),
+      .max(9)
+      .minFrom("boardNumberMin"),
 
     // ---- Dạng 1: Đâu là số mục tiêu ----
     findOneSettings: folder("Cài đặt - Dạng 1", {
@@ -55,6 +66,15 @@ export const widgetDefinition = defineWidget({
         .max(8),
 
       shuffleOptions: param.boolean(true).label("Xáo trộn đáp án"),
+
+      enableTimePressure: param.boolean(false).label("Bật áp lực thời gian"),
+
+      optionStyle: param
+        .select(["classic", "mixed", "camouflage", "noisy"] as const, "mixed")
+        .label("Kiểu đáp án")
+        .description(
+          "classic: dễ phân biệt, mixed/camouflage/noisy: nhiễu tăng dần",
+        ),
     })
       .expanded(false)
       .visibleIf(when("mode").equals("find-one")),
@@ -161,6 +181,144 @@ export const widgetDefinition = defineWidget({
     return {
       targetNumber: randomInt(min, max),
     };
+  },
+
+  difficultySync: {
+    difficultyPath: "difficulty",
+    rules: [
+      {
+        when: when("mode").equals("find-one"),
+        dimensions: [
+          {
+            path: "findOneSettings.distractorCount",
+            weight: 1,
+            levels: {
+              easy: { min: 1, max: 2, preset: 2 },
+              medium: { min: 3, max: 5, preset: 4 },
+              hard: { min: 6, max: 8, preset: 7 },
+            },
+          },
+          {
+            path: "findOneSettings.enableTimePressure",
+            weight: 0.4,
+            levels: {
+              easy: { type: "boolean", equals: false, preset: false },
+              medium: { type: "boolean", equals: true, preset: true },
+              hard: { type: "boolean", equals: true, preset: true },
+            },
+          },
+          {
+            path: "findOneSettings.optionStyle",
+            weight: 0.6,
+            levels: {
+              easy: { type: "select", in: [] },
+              medium: { type: "select", in: ["classic"], preset: "classic" },
+              hard: {
+                type: "select",
+                in: ["mixed", "camouflage", "noisy"],
+                preset: "mixed",
+              },
+            },
+          },
+        ],
+      },
+      {
+        when: when("mode").equals("select-all-ones"),
+        dimensions: [
+          {
+            path: "selectAllSettings.totalDigits",
+            weight: 0.5,
+            levels: {
+              easy: { min: 6, max: 12, preset: 10 },
+              medium: { min: 13, max: 20, preset: 16 },
+              hard: { min: 21, max: 30, preset: 24 },
+            },
+          },
+          {
+            path: "selectAllSettings.minTargetCount",
+            weight: 0.2,
+            levels: {
+              easy: { min: 1, max: 2, preset: 1 },
+              medium: { min: 3, max: 5, preset: 3 },
+              hard: { min: 6, max: 10, preset: 6 },
+            },
+          },
+          {
+            path: "selectAllSettings.maxTargetCount",
+            weight: 0.3,
+            levels: {
+              easy: { min: 2, max: 4, preset: 3 },
+              medium: { min: 5, max: 8, preset: 6 },
+              hard: { min: 9, max: 12, preset: 9 },
+            },
+          },
+        ],
+      },
+      {
+        when: when("mode").equals("count-ones"),
+        dimensions: [
+          {
+            path: "countSettings.totalDigits",
+            weight: 0.5,
+            levels: {
+              easy: { min: 6, max: 12, preset: 10 },
+              medium: { min: 13, max: 20, preset: 16 },
+              hard: { min: 21, max: 30, preset: 24 },
+            },
+          },
+          {
+            path: "countSettings.minTargetCount",
+            weight: 0.2,
+            levels: {
+              easy: { min: 1, max: 2, preset: 1 },
+              medium: { min: 3, max: 5, preset: 3 },
+              hard: { min: 6, max: 10, preset: 6 },
+            },
+          },
+          {
+            path: "countSettings.maxTargetCount",
+            weight: 0.3,
+            levels: {
+              easy: { min: 2, max: 4, preset: 3 },
+              medium: { min: 5, max: 8, preset: 6 },
+              hard: { min: 9, max: 12, preset: 9 },
+            },
+          },
+        ],
+      },
+      {
+        when: when("mode").equals("judge-count"),
+        dimensions: [
+          {
+            path: "judgeSettings.totalDigits",
+            weight: 0.5,
+            levels: {
+              easy: { min: 6, max: 12, preset: 10 },
+              medium: { min: 13, max: 20, preset: 16 },
+              hard: { min: 21, max: 30, preset: 24 },
+            },
+          },
+          {
+            path: "judgeSettings.minTargetCount",
+            weight: 0.2,
+            levels: {
+              easy: { min: 1, max: 2, preset: 1 },
+              medium: { min: 3, max: 5, preset: 3 },
+              hard: { min: 6, max: 10, preset: 6 },
+            },
+          },
+          {
+            path: "judgeSettings.maxTargetCount",
+            weight: 0.3,
+            levels: {
+              easy: { min: 2, max: 4, preset: 3 },
+              medium: { min: 5, max: 8, preset: 6 },
+              hard: { min: 9, max: 12, preset: 9 },
+            },
+          },
+        ],
+      },
+    ],
   },
 
   answer: {

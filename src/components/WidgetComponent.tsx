@@ -1,6 +1,11 @@
 import "../index.css";
 
-import { useWidgetParams, useSubmission, Speak } from "@moly-edu/widget-sdk";
+import {
+  useWidgetParams,
+  useSubmission,
+  Speak,
+  VoiceNumberInput,
+} from "@moly-edu/widget-sdk";
 import type { WidgetParams, WidgetAnswer } from "../definition";
 import { useMemo, type CSSProperties, type KeyboardEvent } from "react";
 
@@ -443,26 +448,30 @@ function CountMode({
 
           <ScatterBoard items={items} />
 
-          <input
-            type="text"
-            inputMode="numeric"
-            value={answer?.value ?? ""}
-            onChange={(event) => {
-              if (isLocked) return;
-              const cleaned = event.target.value.replace(/[^0-9]/g, "");
-              setAnswer({ value: cleaned });
-            }}
-            onKeyDown={onKeyDown}
-            disabled={isLocked}
-            placeholder={
-              params.countSettings.showPlaceholder
-                ? params.countSettings.placeholder
-                : undefined
-            }
-            className="w-full mt-4 text-center text-3xl font-bold py-4 px-6 border-2 border-slate-200 rounded-xl 
-              focus:border-amber-400 focus:outline-none transition-colors
-              disabled:bg-slate-50 disabled:text-slate-500"
-          />
+          <div className="mt-4">
+            <VoiceNumberInput
+              value={answer?.value ?? ""}
+              onValueChange={(cleaned) => {
+                if (isLocked) return;
+                setAnswer({ value: cleaned });
+              }}
+              onKeyDown={onKeyDown}
+              disabled={isLocked}
+              lang="vi-VN"
+              timeoutMs={10000}
+              showMic="auto"
+              micButtonLabel="Trả lời bằng giọng nói"
+              stopButtonLabel="Dừng nghe"
+              placeholder={
+                params.countSettings.showPlaceholder
+                  ? params.countSettings.placeholder
+                  : undefined
+              }
+              className="w-full text-center text-3xl font-bold py-4 px-6 border-2 border-slate-200 rounded-xl 
+                focus:border-amber-400 focus:outline-none transition-colors
+                disabled:bg-slate-50 disabled:text-slate-500"
+            />
+          </div>
 
           {!isLocked && (
             <button
