@@ -710,11 +710,7 @@ function AnswerPool({
   onTokenDragEnd: () => void;
 }) {
   return (
-    <div
-      className="min-h-[360px] relative"
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-    >
+    <div className="min-h-90 relative" onDragOver={onDragOver} onDrop={onDrop}>
       <div className="absolute inset-0 flex flex-wrap content-center justify-center gap-3 px-2 translate-y-5 md:translate-y-6">
         {tokens.length === 0 && !disabled && (
           <p className="w-full text-center text-xs text-slate-400">
