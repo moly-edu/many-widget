@@ -6,7 +6,10 @@ import type {
   DragDropCompareWidgetAnswer,
   DragDropCompareWidgetParams,
 } from "../definition_drag_drop_compare";
-import { clamp, createLearningObjects } from "./learning-objects-data";
+
+interface LearningObjectItem {
+  id: string;
+}
 
 type SubmissionResult = {
   isCorrect: boolean;
@@ -414,4 +417,17 @@ function parseIdSet(
 function encodeIdSet(ids: Set<string>): string {
   if (ids.size === 0) return "__EMPTY__";
   return [...ids].sort().join("|");
+}
+
+function createLearningObjects(
+  count: number,
+  prefix: string,
+): LearningObjectItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${prefix}-${index}`,
+  }));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

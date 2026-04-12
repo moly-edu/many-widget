@@ -18,7 +18,10 @@ import type {
   CompareWidgetAnswer,
   CompareWidgetParams,
 } from "../definition_compare";
-import { clamp, createLearningObjects } from "./learning-objects-data";
+
+interface LearningObjectItem {
+  id: string;
+}
 
 type SubmissionResult = {
   isCorrect: boolean;
@@ -884,4 +887,17 @@ function buildReadResultSpeech(
   if (sign === ">") return `${left} lớn hơn ${right}.`;
   if (sign === "<") return `${left} nhỏ hơn ${right}.`;
   return `${left} bằng ${right}.`;
+}
+
+function createLearningObjects(
+  count: number,
+  prefix: string,
+): LearningObjectItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${prefix}-${index}`,
+  }));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
