@@ -1,18 +1,17 @@
 import "../index.css";
 
-import { Speak, useSubmission, useWidgetParams } from "@moly-edu/widget-sdk";
-import { useMemo, type DragEvent } from "react";
+import {
+  Speak,
+  VoiceNumberInput,
+  WidgetRuntime,
+  useSubmission,
+  useWidgetParams,
+} from "@moly-edu/widget-sdk";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import type {
   CountingWidgetAnswer,
   CountingWidgetParams,
 } from "../definition_counting";
-import {
-  clamp,
-  createLearningObjects,
-  randomInt,
-  shuffleArray,
-} from "./learning-objects-data";
-import { LearningObjectToken } from "./LearningObjects";
 
 type SubmissionResult = {
   isCorrect: boolean;
@@ -20,20 +19,70 @@ type SubmissionResult = {
   maxScore: number;
 } | null;
 
+type AnswerMethod = "voice" | "input" | "choice";
+type UsedSupport = "read-answer";
+
+const MODE_IMAGE_COUNT = "Hiển thị số lượng ảnh";
+const MODE_NUMBER_TOKEN = "Hiển thị 1 ảnh có số";
+const MODE_SPELLING = "Hiển thị chữ xong đánh vần";
+const MODE_TWO_DIGIT = "Đếm số có 2 chữ số (phạm vi 100)";
+
 export function WidgetComponentCounting() {
   const params = useWidgetParams<CountingWidgetParams>();
+  const mode = params.mode;
 
-  const objectCount = clamp(params.objectCount, 1, 10);
-  const targetMoveCount = clamp(params.targetMoveCount, 1, objectCount);
-
-  const objects = useMemo(
-    () => createLearningObjects(objectCount, `counting-${params.mode}`),
-    [objectCount, params.mode],
+  const objectCount = clamp(params.objectCount ?? 1, 1, 10);
+  const numberToken = clamp(
+    Number.parseInt(params.numberToken ?? "1", 10),
+    1,
+    9,
   );
+  const spellingNumber = clamp(
+    Number.parseInt(params.spellingNumber ?? "1", 10),
+    1,
+    9,
+  );
+  const twoDigitNumber = clamp(params.twoDigitNumber ?? 10, 10, 99);
+
+  const correctAnswer =
+    mode === MODE_SPELLING
+      ? spellingNumber
+      : mode === MODE_TWO_DIGIT
+        ? twoDigitNumber
+        : objectCount;
+  const questionTitle = buildQuestionTitle(mode, numberToken);
+
+  const [answerMethod, setAnswerMethod] = useState<AnswerMethod>("input");
+  const [answerMethodModalOpen, setAnswerMethodModalOpen] = useState(false);
+  const [usedSupports, setUsedSupports] = useState<UsedSupport[]>([]);
+
+  const range =
+    mode === MODE_SPELLING
+      ? { min: 1, max: 9 }
+      : mode === MODE_TWO_DIGIT
+        ? { min: 10, max: 99 }
+        : { min: 1, max: 10 };
 
   const choiceOptions = useMemo(
-    () => buildChoiceOptions(objectCount),
-    [objectCount],
+    () =>
+      buildChoiceOptions(
+        correctAnswer,
+        range.min,
+        range.max,
+        objectCount * 1000 +
+          numberToken * 100 +
+          spellingNumber * 10 +
+          twoDigitNumber,
+      ),
+    [
+      correctAnswer,
+      objectCount,
+      numberToken,
+      range.max,
+      range.min,
+      spellingNumber,
+      twoDigitNumber,
+    ],
   );
 
   const {
@@ -46,19 +95,8 @@ export function WidgetComponentCounting() {
     isSubmitting,
   } = useSubmission<CountingWidgetAnswer>({
     evaluate: (ans) => {
-      if (params.mode === "count-choice") {
-        const selected = Number(ans.value ?? "");
-        const isCorrect = Number.isFinite(selected) && selected === objectCount;
-
-        return {
-          isCorrect,
-          score: isCorrect ? 100 : 0,
-          maxScore: 100,
-        };
-      }
-
-      const movedIds = parseIdSet(ans.value ?? "");
-      const isCorrect = movedIds.size === targetMoveCount;
+      const selected = Number.parseInt(ans.value ?? "", 10);
+      const isCorrect = Number.isFinite(selected) && selected === correctAnswer;
 
       return {
         isCorrect,
@@ -68,139 +106,162 @@ export function WidgetComponentCounting() {
     },
   });
 
-  if (params.mode === "count-choice") {
-    const selectedValue = Number(answer?.value ?? "NaN");
-    const questionText =
-      params.customPrompt?.trim() || "Trong hình dưới đây có bao nhiêu đồ vật?";
+  useEffect(() => {
+    const parsed = parseUsedSupports(answer?.usedSupports ?? "");
+    if (parsed.length === 0) return;
 
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-b from-cyan-50 via-sky-50 to-blue-50">
-        <div className="w-full max-w-3xl">
-          <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-6">
-            <div className="text-center mb-5">
-              <div className="inline-block px-3 py-1 rounded-full bg-cyan-100 text-cyan-700 text-xs font-semibold mb-2">
-                🔢 Học đếm trong phạm vi 10 - Dạng 1
-              </div>
-              <h2 className="text-xl font-black text-slate-800">
-                <Speak>{questionText}</Speak>
-              </h2>
-            </div>
+    setUsedSupports((prev) => {
+      const next = Array.from(new Set<UsedSupport>([...prev, ...parsed]));
+      if (next.length === prev.length) return prev;
+      return next;
+    });
+  }, [answer?.usedSupports]);
 
-            <ObjectBoard items={objects} />
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5">
-              {choiceOptions.map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setAnswer({ value: String(option) })}
-                  disabled={isLocked}
-                  className={`rounded-2xl border-2 px-3 py-3 text-lg font-bold transition-colors ${
-                    selectedValue === option
-                      ? "border-cyan-500 bg-cyan-50 text-cyan-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300"
-                  } ${isLocked ? "cursor-default" : "cursor-pointer"}`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-
-            {!isLocked && (
-              <button
-                onClick={submit}
-                disabled={!canSubmit || isSubmitting}
-                className="w-full mt-5 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white py-3 font-semibold disabled:bg-slate-300"
-              >
-                {isSubmitting ? "Đang nộp..." : "Nộp bài"}
-              </button>
-            )}
-
-            <Feedback
-              result={result}
-              isLocked={isLocked}
-              correctText={params.feedback.feedbackCorrect}
-              incorrectText={params.feedback.feedbackIncorrect}
-              showFeedback={params.feedback.showFeedback}
-              fallbackCorrect={`Đúng rồi! Có ${objectCount} đồ vật.`}
-              fallbackIncorrect={`Chưa đúng. Đáp án là ${objectCount}.`}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const movedIds = parseIdSet(answer?.value ?? "");
-  const sourceItems = objects.filter((item) => !movedIds.has(item.id));
-  const targetItems = objects.filter((item) => movedIds.has(item.id));
-  const questionText =
-    params.customPrompt?.trim() ||
-    `Hãy kéo thả ${targetMoveCount} đồ vật sang bên ô mục tiêu.`;
-
-  const onDropToTarget = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    if (isLocked) return;
-
-    const itemId = event.dataTransfer.getData("text/object-id");
-    if (!itemId || movedIds.has(itemId)) return;
-
-    const next = new Set(movedIds);
-    next.add(itemId);
-    setAnswer({ value: encodeIdSet(next) });
+  const writeAnswer = (value: string, supports = usedSupports) => {
+    setAnswer({
+      value,
+      usedSupports: serializeUsedSupports(supports),
+    });
   };
 
-  const onDropToSource = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    if (isLocked) return;
+  const markSupportUsed = (support: UsedSupport) => {
+    setUsedSupports((prev) => {
+      if (prev.includes(support)) return prev;
+      const next = [...prev, support];
+      writeAnswer(answer?.value ?? "", next);
+      return next;
+    });
+  };
 
-    const itemId = event.dataTransfer.getData("text/object-id");
-    if (!itemId || !movedIds.has(itemId)) return;
+  const onAnswerChange = (value: string) => {
+    writeAnswer(value.replace(/[^\d]/g, ""));
+  };
 
-    const next = new Set(movedIds);
-    next.delete(itemId);
-    setAnswer({ value: encodeIdSet(next) });
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && canSubmit) {
+      submit();
+    }
+  };
+
+  const adjustAnswerBy = (delta: number) => {
+    const current = Number.parseInt(answer?.value ?? "", 10);
+    const base = Number.isFinite(current) ? current : range.min;
+    const next = clamp(base + delta, range.min, range.max);
+    writeAnswer(String(next));
+  };
+
+  const selectedValue = Number(answer?.value ?? "NaN");
+  const usedSupportLabels = usedSupports.map((support) =>
+    support === "read-answer" ? "Đọc đáp án" : support,
+  );
+
+  const handleReadAnswerSupport = () => {
+    markSupportUsed("read-answer");
+    speakVietnamese(
+      buildReadAnswerSpeech(mode, {
+        objectCount,
+        numberToken,
+        spellingNumber,
+        twoDigitNumber,
+      }),
+    );
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-b from-lime-50 via-emerald-50 to-teal-50">
-      <div className="w-full max-w-4xl">
-        <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-6">
-          <div className="text-center mb-5">
-            <div className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold mb-2">
-              🧲 Học đếm trong phạm vi 10 - Dạng 2
+    <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-b from-teal-50 via-cyan-50 to-sky-50">
+      <div className="w-full max-w-3xl">
+        <div className="bg-white rounded-3xl shadow-lg border border-slate-200 p-6 md:p-8">
+          <div className="flex items-start justify-between gap-3 mb-5">
+            <div>
+              <div className="inline-block px-3 py-1 rounded-full bg-cyan-100 text-cyan-700 text-xs font-semibold mb-2">
+                {mode === MODE_TWO_DIGIT
+                  ? "Đếm số trong phạm vi 100"
+                  : "Đếm số trong phạm vi 10"}
+              </div>
+              <h2 className="text-xl md:text-2xl font-black text-slate-800">
+                <Speak>{questionTitle}</Speak>
+              </h2>
             </div>
-            <h2 className="text-xl font-black text-slate-800">
-              <Speak>{questionText}</Speak>
-            </h2>
+
+            <div className="flex flex-col gap-2 items-end">
+              <button
+                type="button"
+                onClick={handleReadAnswerSupport}
+                className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-teal-700 text-sm font-semibold hover:bg-teal-100"
+              >
+                <span aria-hidden="true" className="mr-1">
+                  🛟
+                </span>
+                Hỗ trợ đọc đáp án
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnswerMethodModalOpen(true)}
+                className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-indigo-700 text-sm font-semibold hover:bg-indigo-100"
+              >
+                <span aria-hidden="true" className="mr-1">
+                  ⌨️
+                </span>
+                Phương thức điền
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <DropPanel
-              title="Ô nguồn"
-              subtitle=""
-              items={sourceItems}
-              onDrop={onDropToSource}
-              onDragOver={(event) => event.preventDefault()}
-              tone="source"
-              isLocked={isLocked}
-            />
+          <DisplayBoard compact={mode !== MODE_TWO_DIGIT}>
+            {mode === MODE_IMAGE_COUNT ? (
+              <ImageCountPanel
+                imageUrl={params.imageUrl ?? "https://picsum.photos/536/354"}
+                count={objectCount}
+              />
+            ) : mode === MODE_NUMBER_TOKEN ? (
+              <NumberTokenPanel token={numberToken} count={objectCount} />
+            ) : mode === MODE_TWO_DIGIT ? (
+              <TwoDigitCubePanel value={twoDigitNumber} />
+            ) : (
+              <SpellingPanel value={spellingNumber} />
+            )}
+          </DisplayBoard>
 
-            <DropPanel
-              title="Ô mục tiêu"
-              subtitle=""
-              items={targetItems}
-              onDrop={onDropToTarget}
-              onDragOver={(event) => event.preventDefault()}
-              tone="target"
-              isLocked={isLocked}
-            />
+          <div className="mt-5">
+            {answerMethod === "voice" ? (
+              <VoiceNumberInput
+                value={answer?.value ?? ""}
+                onValueChange={(cleaned) => onAnswerChange(cleaned)}
+                onKeyDown={onKeyDown}
+                disabled={isLocked}
+                lang="vi-VN"
+                timeoutMs={10000}
+                showMic="auto"
+                micButtonLabel="Trả lời bằng giọng nói"
+                stopButtonLabel="Dừng nghe"
+                placeholder="?"
+                className="mx-auto w-28 h-14 rounded-lg border-2 border-cyan-200 text-center px-2 text-3xl font-bold text-slate-700 bg-white focus:outline-none focus:border-cyan-400 disabled:bg-slate-100"
+              />
+            ) : answerMethod === "input" ? (
+              <AnswerInput
+                value={answer?.value ?? ""}
+                onChange={onAnswerChange}
+                onKeyDown={onKeyDown}
+                disabled={isLocked}
+                onIncrement={() => adjustAnswerBy(1)}
+                onDecrement={() => adjustAnswerBy(-1)}
+              />
+            ) : (
+              <ChoiceAnswerBoard
+                options={choiceOptions}
+                selectedValue={selectedValue}
+                onSelect={(value) => writeAnswer(String(value))}
+                disabled={isLocked}
+              />
+            )}
           </div>
 
           {!isLocked && (
             <button
               onClick={submit}
               disabled={!canSubmit || isSubmitting}
-              className="w-full mt-5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white py-3 font-semibold disabled:bg-slate-300"
+              className="w-full mt-6 rounded-xl bg-cyan-500 hover:bg-cyan-600 text-white py-3 font-semibold disabled:bg-slate-300"
             >
               {isSubmitting ? "Đang nộp..." : "Nộp bài"}
             </button>
@@ -209,82 +270,284 @@ export function WidgetComponentCounting() {
           <Feedback
             result={result}
             isLocked={isLocked}
-            correctText={params.feedback.feedbackCorrect}
-            incorrectText={params.feedback.feedbackIncorrect}
-            showFeedback={params.feedback.showFeedback}
-            fallbackCorrect="Tuyệt vời! Em kéo đúng số lượng rồi."
-            fallbackIncorrect={`Chưa đúng. Cần kéo đúng ${targetMoveCount} đồ vật.`}
+            expectedAnswer={correctAnswer}
+            usedSupports={usedSupportLabels}
           />
         </div>
       </div>
+
+      {answerMethodModalOpen && (
+        <AnswerMethodModal
+          selectedMethod={answerMethod}
+          onClose={() => setAnswerMethodModalOpen(false)}
+          onSelect={(method) => {
+            setAnswerMethod(method);
+            setAnswerMethodModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function ObjectBoard({
-  items,
+function DisplayBoard({
+  children,
+  compact,
 }: {
-  items: ReturnType<typeof createLearningObjects>;
+  children: React.ReactNode;
+  compact: boolean;
 }) {
   return (
-    <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4">
-      <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 place-items-center">
-        {items.map((item) => (
-          <LearningObjectToken key={item.id} item={item} />
+    <div
+      className={`rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4 flex items-center justify-center ${
+        compact
+          ? "min-h-56 w-full max-w-90 md:w-1/2 md:max-w-none mx-auto"
+          : "min-h-80 w-full"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ImageCountPanel({
+  imageUrl,
+  count,
+}: {
+  imageUrl: string;
+  count: number;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-3 place-items-center justify-items-center">
+      {Array.from({ length: count }).map((_, index) => (
+        <div
+          key={`img-${index}`}
+          className="h-20 w-20 rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden"
+        >
+          <img
+            src={imageUrl}
+            alt={`hinh-${index + 1}`}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NumberTokenPanel({ token, count }: { token: number; count: number }) {
+  const placements = useMemo(
+    () =>
+      Array.from({ length: count }).map((_, index) => ({
+        rotate: ((index % 3) - 1) * 5,
+        delay: `${index * 65}ms`,
+      })),
+    [count],
+  );
+
+  return (
+    <>
+      <style>{`
+        @keyframes pop-in {
+          0% {
+            opacity: 0;
+            transform: translateY(8px) scale(0.88);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
+      <div className="grid grid-cols-3 gap-3 place-items-center justify-items-center">
+        {placements.map((item, index) => (
+          <div
+            key={`token-${index}`}
+            className="h-16 w-16 rounded-xl border-2 border-indigo-200 bg-linear-to-br from-indigo-100 to-cyan-100 shadow-sm flex items-center justify-center"
+            style={{
+              transform: `rotate(${item.rotate}deg)`,
+              animation: "pop-in 420ms ease forwards",
+              animationDelay: item.delay,
+              opacity: 0,
+            }}
+          >
+            <span className="text-3xl font-black text-indigo-700">{token}</span>
+          </div>
         ))}
+      </div>
+    </>
+  );
+}
+
+function TwoDigitCubePanel({ value }: { value: number }) {
+  const tens = Math.floor(value / 10);
+  const units = value % 10;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-center gap-6">
+        <div className="flex flex-wrap gap-3 justify-center">
+          {Array.from({ length: tens }).map((_, stackIndex) => (
+            <TensStack key={`tens-stack-${stackIndex}`} />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2 justify-center max-w-72">
+          {Array.from({ length: units }).map((_, index) => (
+            <UnitCube key={`unit-cube-${index}`} />
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function DropPanel({
-  title,
-  subtitle,
-  items,
-  onDrop,
-  onDragOver,
-  tone,
-  isLocked,
+function TensStack() {
+  return (
+    <div className="relative h-32 w-8">
+      {Array.from({ length: 10 }).map((_, index) => (
+        <div
+          key={`tens-cube-${index}`}
+          className="absolute left-1/2 -translate-x-1/2"
+          style={{ top: `${index * 10}px`, zIndex: 30 - index }}
+        >
+          <CubeIcon size={16} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UnitCube() {
+  return <CubeIcon size={28} />;
+}
+
+function CubeIcon({ size }: { size: number }) {
+  const w = size;
+  const h = Math.round(size * 0.72);
+  const topHeight = Math.round(size * 0.24);
+  const sideWidth = Math.round(size * 0.22);
+
+  return (
+    <svg
+      width={w}
+      height={h + topHeight}
+      viewBox={`0 0 ${w} ${h + topHeight}`}
+      aria-hidden="true"
+    >
+      <polygon
+        points={`0,${topHeight} ${w - sideWidth},${topHeight} ${w},0 ${sideWidth},0`}
+        fill="#d9f99d"
+        stroke="#14b8a6"
+        strokeWidth="1"
+      />
+      <polygon
+        points={`0,${topHeight} 0,${h + topHeight} ${w - sideWidth},${h + topHeight} ${w - sideWidth},${topHeight}`}
+        fill="#a3e635"
+        stroke="#14b8a6"
+        strokeWidth="1"
+      />
+      <polygon
+        points={`${w - sideWidth},${topHeight} ${w},0 ${w},${h} ${w - sideWidth},${h + topHeight}`}
+        fill="#4ade80"
+        stroke="#14b8a6"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
+function SpellingPanel({ value }: { value: number }) {
+  const word = numberToVietnamese(value);
+
+  return (
+    <p className="text-4xl md:text-5xl font-black text-emerald-900 tracking-wide">
+      {word}
+    </p>
+  );
+}
+
+function AnswerInput({
+  value,
+  onChange,
+  onKeyDown,
+  disabled,
+  onIncrement,
+  onDecrement,
 }: {
-  title: string;
-  subtitle: string;
-  items: ReturnType<typeof createLearningObjects>;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
-  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-  tone: "source" | "target";
-  isLocked: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  disabled: boolean;
+  onIncrement: () => void;
+  onDecrement: () => void;
 }) {
   return (
-    <div
-      onDrop={onDrop}
-      onDragOver={onDragOver}
-      className={`rounded-2xl border-2 p-4 min-h-56 ${
-        tone === "source"
-          ? "border-amber-200 bg-amber-50"
-          : "border-emerald-200 bg-emerald-50"
-      }`}
-    >
-      <h3 className="text-sm font-bold text-slate-700">{title}</h3>
-      <p className="text-xs text-slate-500 mb-3">{subtitle}</p>
+    <div className="relative mx-auto w-28">
+      <button
+        type="button"
+        onClick={onDecrement}
+        disabled={disabled}
+        className="absolute top-1/2 -translate-y-1/2 -left-10 h-9 w-9 rounded-lg border-2 border-cyan-200 bg-white text-xl font-black text-cyan-600 hover:bg-cyan-50 disabled:opacity-60"
+      >
+        -
+      </button>
 
-      {items.length === 0 ? (
-        <div className="text-xs text-slate-400 italic">Không có đồ vật</div>
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-          {items.map((item) => (
-            <LearningObjectToken
-              key={item.id}
-              item={item}
-              size={54}
-              draggable={!isLocked}
-              onDragStart={(event) => {
-                event.dataTransfer.setData("text/object-id", item.id);
-                event.dataTransfer.effectAllowed = "move";
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        disabled={disabled}
+        inputMode="numeric"
+        placeholder="?"
+        className="w-28 h-14 rounded-lg border-2 border-cyan-200 bg-white text-center px-2 text-3xl font-bold text-slate-700 focus:outline-none focus:border-cyan-400 disabled:bg-slate-100"
+      />
+
+      <button
+        type="button"
+        onClick={onIncrement}
+        disabled={disabled}
+        className="absolute top-1/2 -translate-y-1/2 -right-10 h-9 w-9 rounded-lg border-2 border-cyan-200 bg-white text-xl font-black text-cyan-600 hover:bg-cyan-50 disabled:opacity-60"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function ChoiceAnswerBoard({
+  options,
+  selectedValue,
+  onSelect,
+  disabled,
+}: {
+  options: number[];
+  selectedValue: number;
+  onSelect: (value: number) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {options.map((option) => {
+        const isSelected = selectedValue === option;
+
+        return (
+          <button
+            key={`option-${option}`}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSelect(option)}
+            className={`rounded-xl border-2 py-4 text-2xl font-black transition-colors ${
+              isSelected
+                ? "border-cyan-400 bg-cyan-50 text-cyan-700"
+                : "border-slate-200 bg-white text-slate-700 hover:border-cyan-300 hover:bg-cyan-50"
+            } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+          >
+            {option}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -292,21 +555,15 @@ function DropPanel({
 function Feedback({
   result,
   isLocked,
-  showFeedback,
-  correctText,
-  incorrectText,
-  fallbackCorrect,
-  fallbackIncorrect,
+  expectedAnswer,
+  usedSupports,
 }: {
   result: SubmissionResult;
   isLocked: boolean;
-  showFeedback: boolean;
-  correctText: string;
-  incorrectText: string;
-  fallbackCorrect: string;
-  fallbackIncorrect: string;
+  expectedAnswer: number;
+  usedSupports: string[];
 }) {
-  if (!result || !isLocked || !showFeedback) return null;
+  if (!result || !isLocked) return null;
 
   return (
     <div
@@ -323,34 +580,207 @@ function Feedback({
         }`}
       >
         {result.isCorrect
-          ? correctText || fallbackCorrect
-          : incorrectText || fallbackIncorrect}
+          ? "Chính xác rồi!"
+          : `Chưa đúng. Đáp án là ${expectedAnswer}.`}
       </p>
+
+      {usedSupports.length > 0 && (
+        <div className="mt-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-left">
+          <p className="text-xs font-bold text-cyan-700 uppercase tracking-wide">
+            Hỗ trợ đã dùng
+          </p>
+          <ul className="mt-1 text-sm text-cyan-800 list-disc pl-5">
+            {usedSupports.map((item) => (
+              <li key={`used-support-${item}`}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
 
-function buildChoiceOptions(correctCount: number): number[] {
-  const options = new Set<number>([correctCount]);
+function AnswerMethodModal({
+  selectedMethod,
+  onClose,
+  onSelect,
+}: {
+  selectedMethod: AnswerMethod;
+  onClose: () => void;
+  onSelect: (method: AnswerMethod) => void;
+}) {
+  const methodOptions: Array<{
+    method: AnswerMethod;
+    title: string;
+    icon: string;
+  }> = [
+    { method: "voice", title: "Thu âm để điền", icon: "🎤" },
+    { method: "input", title: "Điền bằng ô nhập", icon: "⌨️" },
+    { method: "choice", title: "Chọn 1 trong 4 đáp án", icon: "🔘" },
+  ];
 
-  while (options.size < 4) {
-    options.add(randomInt(0, 10));
-  }
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
+      <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 shadow-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-800">
+            <Speak>Chọn phương thức điền đáp án</Speak>
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50"
+          >
+            Đóng
+          </button>
+        </div>
 
-  return shuffleArray([...options]);
-}
+        <div className="space-y-2">
+          {methodOptions.map((option) => {
+            const isActive = option.method === selectedMethod;
 
-function parseIdSet(value: string): Set<string> {
-  if (!value.trim()) return new Set<string>();
-
-  return new Set(
-    value
-      .split("|")
-      .map((item) => item.trim())
-      .filter(Boolean),
+            return (
+              <button
+                key={option.method}
+                type="button"
+                onClick={() => onSelect(option.method)}
+                className={`w-full rounded-xl border-2 px-4 py-3 flex items-center justify-between text-left ${
+                  isActive
+                    ? "border-indigo-300 bg-indigo-50"
+                    : "border-slate-200 bg-white hover:bg-slate-50"
+                }`}
+              >
+                <span className="font-semibold text-slate-800">
+                  <Speak>{option.title}</Speak>
+                </span>
+                <span className="text-2xl" aria-hidden="true">
+                  {option.icon}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function encodeIdSet(ids: Set<string>): string {
-  return [...ids].sort().join("|");
+function buildQuestionTitle(
+  mode: CountingWidgetParams["mode"],
+  token: number,
+): string {
+  if (mode === MODE_IMAGE_COUNT) return "Có bao nhiêu hình";
+  if (mode === MODE_NUMBER_TOKEN) return `Có bao nhiêu số ${token} trong đây`;
+  if (mode === MODE_TWO_DIGIT) return "Số được mô phỏng là số bao nhiêu";
+  return "Chữ dưới đây là số mấy";
+}
+
+function buildReadAnswerSpeech(
+  mode: CountingWidgetParams["mode"],
+  values: {
+    objectCount: number;
+    numberToken: number;
+    spellingNumber: number;
+    twoDigitNumber: number;
+  },
+): string {
+  if (mode === MODE_IMAGE_COUNT) {
+    return `Có ${numberToVietnamese(values.objectCount)} hình.`;
+  }
+
+  if (mode === MODE_NUMBER_TOKEN) {
+    return `Có ${numberToVietnamese(values.objectCount)} số ${values.numberToken}.`;
+  }
+
+  if (mode === MODE_TWO_DIGIT) {
+    return `Số được mô phỏng là số ${values.twoDigitNumber}.`;
+  }
+
+  return `Chữ dưới đây là số ${values.spellingNumber}.`;
+}
+
+function speakVietnamese(text: string) {
+  void WidgetRuntime.requestTtsSpeak({
+    text,
+    lang: "vi-VN",
+    rate: 0.95,
+    timeoutMs: 25000,
+  }).catch(() => undefined);
+}
+
+function serializeUsedSupports(items: UsedSupport[]): string {
+  return Array.from(new Set(items)).join("|");
+}
+
+function parseUsedSupports(raw: string): UsedSupport[] {
+  if (!raw) return [];
+
+  return Array.from(
+    new Set(
+      raw
+        .split("|")
+        .map((item) => item.trim())
+        .filter((item): item is UsedSupport => item === "read-answer"),
+    ),
+  );
+}
+
+function buildChoiceOptions(
+  correctValue: number,
+  min: number,
+  max: number,
+  seed: number,
+): number[] {
+  const options = new Set<number>([correctValue]);
+
+  const offsets = [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5];
+  for (const offset of offsets) {
+    if (options.size >= 4) break;
+    const candidate = correctValue + offset;
+    if (candidate >= min && candidate <= max) {
+      options.add(candidate);
+    }
+  }
+
+  for (let value = min; value <= max && options.size < 4; value += 1) {
+    options.add(value);
+  }
+
+  return deterministicShuffle(Array.from(options).slice(0, 4), seed);
+}
+
+function deterministicShuffle(values: number[], seed: number): number[] {
+  const output = [...values];
+  let currentSeed = seed || 1;
+
+  for (let i = output.length - 1; i > 0; i -= 1) {
+    currentSeed = (currentSeed * 9301 + 49297) % 233280;
+    const ratio = currentSeed / 233280;
+    const j = Math.floor(ratio * (i + 1));
+    [output[i], output[j]] = [output[j], output[i]];
+  }
+
+  return output;
+}
+
+function numberToVietnamese(value: number): string {
+  const words: Record<number, string> = {
+    0: "không",
+    1: "một",
+    2: "hai",
+    3: "ba",
+    4: "bốn",
+    5: "năm",
+    6: "sáu",
+    7: "bảy",
+    8: "tám",
+    9: "chín",
+    10: "mười",
+  };
+
+  return words[value] ?? String(value);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

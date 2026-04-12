@@ -47,7 +47,7 @@ const activeWidget: ActiveWidget =
   envWidget === "arithmetic-gap-fill" ||
   envWidget === "arithmetic-match"
     ? envWidget
-    : "arithmetic-gap-fill";
+    : "counting-10";
 
 if (activeWidget === "number-recognition") {
   createWidget({
