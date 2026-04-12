@@ -225,19 +225,21 @@ export function WidgetComponentCounting() {
 
           <div className="mt-5">
             {answerMethod === "voice" ? (
-              <VoiceNumberInput
-                value={answer?.value ?? ""}
-                onValueChange={(cleaned) => onAnswerChange(cleaned)}
-                onKeyDown={onKeyDown}
-                disabled={isLocked}
-                lang="vi-VN"
-                timeoutMs={10000}
-                showMic="auto"
-                micButtonLabel="Trả lời bằng giọng nói"
-                stopButtonLabel="Dừng nghe"
-                placeholder="?"
-                className="mx-auto w-28 h-14 rounded-lg border-2 border-cyan-200 text-center px-2 text-3xl font-bold text-slate-700 bg-white focus:outline-none focus:border-cyan-400 disabled:bg-slate-100"
-              />
+              <div className="w-28 mx-auto">
+                <VoiceNumberInput
+                  value={answer?.value ?? ""}
+                  onValueChange={(cleaned) => onAnswerChange(cleaned)}
+                  onKeyDown={onKeyDown}
+                  disabled={isLocked}
+                  lang="vi-VN"
+                  timeoutMs={10000}
+                  showMic="auto"
+                  micButtonLabel="Trả lời bằng giọng nói"
+                  stopButtonLabel="Dừng nghe"
+                  placeholder="?"
+                  className="mx-auto w-28 h-14 rounded-lg border-2 border-cyan-200 text-center px-2 text-3xl font-bold text-slate-700 bg-white focus:outline-none focus:border-cyan-400 disabled:bg-slate-100"
+                />
+              </div>
             ) : answerMethod === "input" ? (
               <AnswerInput
                 value={answer?.value ?? ""}

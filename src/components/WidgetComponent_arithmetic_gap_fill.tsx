@@ -509,18 +509,18 @@ function ImageCountPanel({
   count: number;
 }) {
   return (
-    <div className="rounded-3xl border-2 border-violet-500 bg-slate-100/90 px-2 py-2 shadow-sm">
-      <div className="grid grid-cols-3 gap-2 justify-items-center">
+    <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4 flex items-center justify-center min-h-56 w-full max-w-90 mx-auto">
+      <div className="grid grid-cols-3 gap-2 place-items-center justify-items-center">
         {Array.from({ length: count }).map((_, index) => (
           <div
             key={`image-${count}-${index}`}
-            className="h-16 w-16 md:h-18 md:w-18 rounded-xl border border-slate-300 bg-white flex items-center justify-center overflow-hidden"
+            className="h-18 w-18 rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden"
           >
             <img
               src={imageUrl}
               alt={`item ${index + 1}`}
               loading="lazy"
-              className="h-12 w-12 md:h-20 md:w-16 object-contain"
+              className="h-full w-full object-cover"
               onError={(event) => {
                 event.currentTarget.onerror = null;
                 event.currentTarget.src = FALLBACK_IMAGE_DATA_URI;
@@ -560,7 +560,7 @@ function AnswerInput({
       disabled={disabled}
       inputMode="numeric"
       placeholder="?"
-      className="h-14 w-14 md:h-16 md:w-16 rounded-2xl border-4 border-violet-500 bg-white text-center text-3xl md:text-4xl font-black text-slate-700 focus:outline-none focus:border-violet-600 disabled:bg-slate-100"
+      className="h-14 w-14 md:h-16 md:w-16 rounded-2xl border-2 border-violet-400 bg-white text-center text-3xl md:text-4xl font-black text-slate-700 focus:outline-none focus:border-violet-500 disabled:bg-slate-100"
     />
   );
 }
