@@ -19,6 +19,8 @@ import { arithmeticGapFillWidgetDefinition } from "./definition_arithmetic_gap_f
 import { WidgetComponentArithmeticGapFill } from "./components/WidgetComponent_arithmetic_gap_fill";
 import { arithmeticMatchWidgetDefinition } from "./definition_arithmetic_match";
 import { WidgetComponentArithmeticMatch } from "./components/WidgetComponent_arithmetic_match";
+import { dragDropCompareWidgetDefinition } from "./definition_drag_drop_compare";
+import { WidgetComponentDragDropCompare } from "./components/WidgetComponent_drag_drop_compare";
 
 type ActiveWidget =
   | "number-recognition"
@@ -28,6 +30,7 @@ type ActiveWidget =
   | "tangram"
   | "counting-10"
   | "compare-10"
+  | "drag-drop-compare"
   | "arithmetic-1-9"
   | "arithmetic-gap-fill"
   | "arithmetic-match";
@@ -43,11 +46,12 @@ const activeWidget: ActiveWidget =
   envWidget === "tangram" ||
   envWidget === "counting-10" ||
   envWidget === "compare-10" ||
+  envWidget === "drag-drop-compare" ||
   envWidget === "arithmetic-1-9" ||
   envWidget === "arithmetic-gap-fill" ||
   envWidget === "arithmetic-match"
     ? envWidget
-    : "compare-10";
+    : "drag-drop-compare";
 
 if (activeWidget === "number-recognition") {
   createWidget({
@@ -83,6 +87,11 @@ if (activeWidget === "number-recognition") {
   createWidget({
     definition: compareWidgetDefinition,
     component: WidgetComponentCompare,
+  });
+} else if (activeWidget === "drag-drop-compare") {
+  createWidget({
+    definition: dragDropCompareWidgetDefinition,
+    component: WidgetComponentDragDropCompare,
   });
 } else if (activeWidget === "arithmetic-gap-fill") {
   createWidget({
