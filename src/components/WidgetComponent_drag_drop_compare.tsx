@@ -1,7 +1,7 @@
 import "../index.css";
 
 import { Speak, useSubmission, useWidgetParams } from "@moly-edu/widget-sdk";
-import { useEffect, useMemo, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import type {
   DragDropCompareWidgetAnswer,
   DragDropCompareWidgetParams,
@@ -99,6 +99,8 @@ export function WidgetComponentDragDropCompare() {
     },
   });
 
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
   useEffect(() => {
     setAnswer({ value: initialEncoded });
   }, [initialEncoded, setAnswer]);
@@ -114,6 +116,20 @@ export function WidgetComponentDragDropCompare() {
     setAnswer({ value: encodeIdSet(nextLeftIds) });
   };
 
+  const moveItemToSide = (itemId: string, target: "left" | "right") => {
+    if (isLocked) return;
+
+    const nextLeft = new Set(leftSet);
+    if (target === "left") {
+      nextLeft.add(itemId);
+    } else {
+      nextLeft.delete(itemId);
+    }
+
+    setLeftItems(nextLeft);
+    setSelectedItemId(null);
+  };
+
   const onDropLeft = (event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     if (isLocked) return;
@@ -121,9 +137,7 @@ export function WidgetComponentDragDropCompare() {
     const itemId = event.dataTransfer.getData("text/drag-item-id");
     if (!itemId) return;
 
-    const nextLeft = new Set(leftSet);
-    nextLeft.add(itemId);
-    setLeftItems(nextLeft);
+    moveItemToSide(itemId, "left");
   };
 
   const onDropRight = (event: DragEvent<HTMLDivElement>) => {
@@ -133,9 +147,12 @@ export function WidgetComponentDragDropCompare() {
     const itemId = event.dataTransfer.getData("text/drag-item-id");
     if (!itemId) return;
 
-    const nextLeft = new Set(leftSet);
-    nextLeft.delete(itemId);
-    setLeftItems(nextLeft);
+    moveItemToSide(itemId, "right");
+  };
+
+  const onZoneClick = (target: "left" | "right") => {
+    if (isLocked || !selectedItemId) return;
+    moveItemToSide(selectedItemId, target);
   };
 
   return (
@@ -159,6 +176,9 @@ export function WidgetComponentDragDropCompare() {
                 onDrop={onDropLeft}
                 isLocked={isLocked}
                 count={leftItems.length}
+                selectedItemId={selectedItemId}
+                onItemSelect={setSelectedItemId}
+                onZoneClick={() => onZoneClick("left")}
               />
 
               <div className="h-14 w-14 rounded-2xl border border-slate-300 bg-white flex items-center justify-center text-3xl font-black text-slate-700">
@@ -171,6 +191,9 @@ export function WidgetComponentDragDropCompare() {
                 onDrop={onDropRight}
                 isLocked={isLocked}
                 count={rightItems.length}
+                selectedItemId={selectedItemId}
+                onItemSelect={setSelectedItemId}
+                onZoneClick={() => onZoneClick("right")}
               />
             </div>
           ) : (
@@ -181,6 +204,9 @@ export function WidgetComponentDragDropCompare() {
                 onDrop={onDropLeft}
                 isLocked={isLocked}
                 count={leftItems.length}
+                selectedItemId={selectedItemId}
+                onItemSelect={setSelectedItemId}
+                onZoneClick={() => onZoneClick("left")}
               />
 
               <DropZone
@@ -189,6 +215,9 @@ export function WidgetComponentDragDropCompare() {
                 onDrop={onDropRight}
                 isLocked={isLocked}
                 count={rightItems.length}
+                selectedItemId={selectedItemId}
+                onItemSelect={setSelectedItemId}
+                onZoneClick={() => onZoneClick("right")}
               />
             </div>
           )}
@@ -222,12 +251,18 @@ function DropZone({
   onDrop,
   isLocked,
   count,
+  selectedItemId,
+  onItemSelect,
+  onZoneClick,
 }: {
   items: ReturnType<typeof createLearningObjects>;
   imageUrl: string;
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   isLocked: boolean;
   count: number;
+  selectedItemId: string | null;
+  onItemSelect: (itemId: string | null) => void;
+  onZoneClick: () => void;
 }) {
   return (
     <div>
@@ -235,17 +270,27 @@ function DropZone({
         className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4 flex items-center justify-center min-h-56 w-full"
         onDrop={onDrop}
         onDragOver={(event) => event.preventDefault()}
+        onClick={onZoneClick}
       >
         <div className="w-full min-h-44 grid grid-cols-3 gap-2 place-items-center justify-items-center">
           {items.map((item) => (
             <div
               key={item.id}
-              className="h-24 w-24 rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden"
+              className={`h-20 w-20 rounded-xl border bg-white shadow-sm overflow-hidden ${
+                selectedItemId === item.id
+                  ? "border-sky-500 ring-2 ring-sky-200"
+                  : "border-cyan-200"
+              }`}
               draggable={!isLocked}
               onDragStart={(event) => {
                 if (isLocked) return;
                 event.dataTransfer.setData("text/drag-item-id", item.id);
                 event.dataTransfer.effectAllowed = "move";
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (isLocked) return;
+                onItemSelect(selectedItemId === item.id ? null : item.id);
               }}
             >
               <img

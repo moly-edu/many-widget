@@ -5,6 +5,8 @@ import { compareWidgetDefinition } from "./definition_compare";
 import { WidgetComponentCompare } from "./components/WidgetComponent_compare";
 import { arithmeticWidgetDefinition } from "./definition_arithmetic";
 import { WidgetComponentArithmetic } from "./components/WidgetComponent_arithmetic";
+import { arithmetic99WidgetDefinition } from "./definition_arithmetic_99";
+import { WidgetComponentArithmetic99 } from "./components/WidgetComponent_arithmetic_99";
 import { arithmeticGapFillWidgetDefinition } from "./definition_arithmetic_gap_fill";
 import { WidgetComponentArithmeticGapFill } from "./components/WidgetComponent_arithmetic_gap_fill";
 import { arithmeticMatchWidgetDefinition } from "./definition_arithmetic_match";
@@ -19,6 +21,7 @@ type ActiveWidget =
   | "compare-10"
   | "drag-drop-compare"
   | "arithmetic-1-9"
+  | "arithmetic-99"
   | "arithmetic-gap-fill"
   | "arithmetic-match"
   | "geometry-counting";
@@ -31,11 +34,12 @@ const activeWidget: ActiveWidget =
   envWidget === "compare-10" ||
   envWidget === "drag-drop-compare" ||
   envWidget === "arithmetic-1-9" ||
+  envWidget === "arithmetic-99" ||
   envWidget === "arithmetic-gap-fill" ||
   envWidget === "arithmetic-match" ||
   envWidget === "geometry-counting"
     ? envWidget
-    : "geometry-counting";
+    : "arithmetic-99";
 
 if (activeWidget === "counting-10") {
   createWidget({
@@ -56,6 +60,11 @@ if (activeWidget === "counting-10") {
   createWidget({
     definition: arithmeticGapFillWidgetDefinition,
     component: WidgetComponentArithmeticGapFill,
+  });
+} else if (activeWidget === "arithmetic-99") {
+  createWidget({
+    definition: arithmetic99WidgetDefinition,
+    component: WidgetComponentArithmetic99,
   });
 } else if (activeWidget === "arithmetic-match") {
   createWidget({

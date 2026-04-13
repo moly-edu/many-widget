@@ -396,19 +396,19 @@ export function WidgetComponentArithmeticGapFill() {
           </div>
 
           <div className="mt-2 overflow-x-auto pb-1">
-            <div className="min-w-160 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-x-2 gap-y-2">
-              <div className="col-start-1">
+            <div className="min-w-140 grid grid-cols-[minmax(0,4fr)_auto_minmax(0,4fr)_auto_minmax(0,2fr)] items-end gap-x-2 gap-y-2">
+              <div className="col-start-1 row-start-1">
                 <ImageCountPanel imageUrl={firstImageUrl} count={firstNumber} />
               </div>
 
-              <div className="col-start-3">
+              <div className="col-start-3 row-start-1">
                 <ImageCountPanel
                   imageUrl={secondImageUrl}
                   count={secondNumber}
                 />
               </div>
 
-              <div className="col-start-1 flex justify-center">
+              <div className="col-start-1 row-start-2 flex justify-center self-center z-10">
                 <AnswerInput
                   value={draft.firstValue}
                   onChange={(value) => onInputChange("firstValue", value)}
@@ -417,11 +417,11 @@ export function WidgetComponentArithmeticGapFill() {
                 />
               </div>
 
-              <div className="col-start-2 flex justify-center">
+              <div className="col-start-2 row-start-2 flex justify-center self-center z-10">
                 <MathSymbol symbol={operatorSymbol} />
               </div>
 
-              <div className="col-start-3 flex justify-center">
+              <div className="col-start-3 row-start-2 flex justify-center self-center z-10">
                 <AnswerInput
                   value={draft.secondValue}
                   onChange={(value) => onInputChange("secondValue", value)}
@@ -430,11 +430,11 @@ export function WidgetComponentArithmeticGapFill() {
                 />
               </div>
 
-              <div className="col-start-4 flex justify-center">
+              <div className="col-start-4 row-start-2 flex justify-center self-center z-10">
                 <MathSymbol symbol="=" />
               </div>
 
-              <div className="col-start-5 flex justify-center">
+              <div className="col-start-5 row-start-2 flex justify-center self-center z-10">
                 <AnswerInput
                   value={draft.resultValue}
                   onChange={(value) => onInputChange("resultValue", value)}
@@ -509,12 +509,12 @@ function ImageCountPanel({
   count: number;
 }) {
   return (
-    <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-4 flex items-center justify-center min-h-56 w-full max-w-90 mx-auto">
-      <div className="grid grid-cols-3 gap-2 place-items-center justify-items-center">
+    <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-2 sm:p-3 flex items-center justify-center w-full mx-auto">
+      <div className="grid w-full grid-cols-3 gap-1.5 sm:gap-2 place-items-center">
         {Array.from({ length: count }).map((_, index) => (
           <div
             key={`image-${count}-${index}`}
-            className="h-18 w-18 rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden"
+            className="w-full max-w-16 aspect-square rounded-xl border border-cyan-200 bg-white shadow-sm overflow-hidden"
           >
             <img
               src={imageUrl}
@@ -535,7 +535,7 @@ function ImageCountPanel({
 
 function MathSymbol({ symbol }: { symbol: string }) {
   return (
-    <div className="h-14 w-14 md:h-16 md:w-16 rounded-full border-4 border-violet-400 bg-white flex items-center justify-center text-3xl md:text-4xl font-black text-slate-700 shadow-sm">
+    <div className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 rounded-full border-[3px] border-slate-400 bg-white flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-black text-slate-700 shadow-sm">
       {symbol}
     </div>
   );
@@ -560,7 +560,7 @@ function AnswerInput({
       disabled={disabled}
       inputMode="numeric"
       placeholder="?"
-      className="h-14 w-14 md:h-16 md:w-16 rounded-2xl border-2 border-violet-400 bg-white text-center text-3xl md:text-4xl font-black text-slate-700 focus:outline-none focus:border-violet-500 disabled:bg-slate-100"
+      className="h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 rounded-xl border-2 border-slate-300 bg-white text-center text-2xl sm:text-3xl md:text-4xl font-black text-slate-700 focus:outline-none focus:border-slate-500 disabled:bg-slate-100"
     />
   );
 }

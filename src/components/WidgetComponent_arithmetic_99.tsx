@@ -1,4 +1,4 @@
-﻿import "../index.css";
+import "../index.css";
 
 import {
   Speak,
@@ -10,15 +10,14 @@ import {
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import type {
-  ArithmeticWidgetAnswer,
-  ArithmeticWidgetParams,
-} from "../definition_arithmetic";
+  Arithmetic99WidgetAnswer,
+  Arithmetic99WidgetParams,
+} from "../definition_arithmetic_99";
 
 type SubmissionResult = {
   isCorrect: boolean;
@@ -31,6 +30,16 @@ type Type2SupportMode = "sticks" | "lego" | "number-table" | "number-line";
 type SupportModalStep = "root" | "type2-list" | "type2-preview";
 type AnswerMethod = "voice" | "input" | "choice";
 type UsedSupport = "column" | "read-prompt" | "read-result" | Type2SupportMode;
+type Operation = "phép cộng" | "phép trừ";
+type LayoutMode = "cột dọc" | "hàng ngang";
+type StepperOrientation = "horizontal" | "vertical";
+
+type PlaceRow = {
+  placeLabel: string;
+  first: number;
+  second: number;
+  result: number;
+};
 
 type StepMove = {
   from: number;
@@ -38,24 +47,21 @@ type StepMove = {
   label: string;
 };
 
-type StepperOrientation = "horizontal" | "vertical";
-
-type NumberStyle = {
-  bg: string;
-  text: string;
-  border: string;
+type DigitPair = {
+  tens: number;
+  units: number;
 };
 
-const stepWordMap: Record<number, string> = {
-  1: "one",
-  2: "two",
-  3: "three",
-  4: "four",
-  5: "five",
-  6: "six",
-  7: "seven",
-  8: "eight",
-  9: "nine",
+type NormalizedExpression = {
+  operation: Operation;
+  layout: LayoutMode;
+  firstDigits: DigitPair;
+  secondDigits: DigitPair;
+  resultDigits: DigitPair;
+  firstNumber: number;
+  secondNumber: number;
+  expectedResult: number;
+  hideSecondTens: boolean;
 };
 
 const supportLabelMap: Record<UsedSupport, string> = {
@@ -68,32 +74,20 @@ const supportLabelMap: Record<UsedSupport, string> = {
   "number-line": "Tia số",
 };
 
-const audioAssetModules = import.meta.glob("../assets/*.{wav,mp3,ogg}", {
-  eager: true,
-  import: "default",
-}) as Record<string, string>;
-
-const audioFileByName = Object.entries(audioAssetModules).reduce<
-  Record<string, string>
->((acc, [modulePath, assetUrl]) => {
-  const fileName = modulePath.split("/").pop();
-  if (fileName) {
-    acc[fileName] = assetUrl;
-  }
-  return acc;
-}, {});
-
-export function WidgetComponentArithmetic() {
-  const params = useWidgetParams<ArithmeticWidgetParams>();
-  const { operation, firstNumber, secondNumber } =
-    getNormalizedOperands(params);
-  const operatorSymbol = operation === "phép cộng" ? "+" : "-";
-  const addLayout = params.addLayout ?? "cột dọc";
-  const isHorizontalLayout = addLayout === "hàng ngang";
-  const expectedResult =
-    operation === "phép cộng"
-      ? firstNumber + secondNumber
-      : firstNumber - secondNumber;
+export function WidgetComponentArithmetic99() {
+  const params = useWidgetParams<Arithmetic99WidgetParams>();
+  const expression = useMemo(() => getNormalizedExpression(params), [params]);
+  const {
+    operation,
+    layout,
+    firstDigits,
+    secondDigits,
+    resultDigits,
+    firstNumber,
+    secondNumber,
+    expectedResult,
+    hideSecondTens,
+  } = expression;
 
   const [supportMode, setSupportMode] = useState<SupportMode>("none");
   const [supportModalOpen, setSupportModalOpen] = useState(false);
@@ -101,15 +95,11 @@ export function WidgetComponentArithmetic() {
     useState<SupportModalStep>("root");
   const [pendingType2Support, setPendingType2Support] =
     useState<Type2SupportMode>("sticks");
-
   const [answerMethod, setAnswerMethod] = useState<AnswerMethod>("input");
   const [answerMethodModalOpen, setAnswerMethodModalOpen] = useState(false);
   const [usedSupports, setUsedSupports] = useState<UsedSupport[]>([]);
-
   const [columnTens, setColumnTens] = useState("");
   const [columnUnits, setColumnUnits] = useState("");
-
-  const audioTimerRef = useRef<number[]>([]);
 
   const {
     answer,
@@ -119,7 +109,7 @@ export function WidgetComponentArithmetic() {
     isLocked,
     canSubmit,
     isSubmitting,
-  } = useSubmission<ArithmeticWidgetAnswer>({
+  } = useSubmission<Arithmetic99WidgetAnswer>({
     evaluate: (ans) => {
       const parsed = Number.parseInt(ans.value ?? "", 10);
       const isCorrect = Number.isFinite(parsed) && parsed === expectedResult;
@@ -141,49 +131,6 @@ export function WidgetComponentArithmetic() {
       };
     },
   });
-
-  const questionText =
-    operation === "phép cộng"
-      ? isHorizontalLayout
-        ? "Tính phép cộng theo hàng ngang."
-        : "Tính phép cộng theo cột dọc."
-      : isHorizontalLayout
-        ? "Tính phép trừ theo hàng ngang."
-        : "Tính phép trừ theo cột dọc.";
-
-  const expressionText = `${firstNumber} ${operatorSymbol} ${secondNumber}`;
-  const firstStyle = getNumberStyle(firstNumber);
-  const secondStyle = getNumberStyle(secondNumber);
-  const resultStyle = getNumberStyle(expectedResult);
-
-  const stepMoves = useMemo(
-    () =>
-      buildStepMoves(
-        firstNumber,
-        secondNumber,
-        operation === "phép cộng" ? "add" : "subtract",
-      ),
-    [firstNumber, secondNumber, operation],
-  );
-
-  const choiceOptions = useMemo(() => {
-    const optionRange =
-      operation === "phép cộng" ? { min: 2, max: 19 } : { min: 0, max: 9 };
-
-    return buildChoiceOptions(
-      expectedResult,
-      optionRange.min,
-      optionRange.max,
-      firstNumber * 100 + secondNumber * 10 + expectedResult,
-    );
-  }, [expectedResult, firstNumber, operation, secondNumber]);
-
-  const effectiveAnswerMethod: AnswerMethod =
-    supportMode === "column" ? "input" : answerMethod;
-  const usedSupportLabels = useMemo(
-    () => usedSupports.map((item) => supportLabelMap[item]),
-    [usedSupports],
-  );
 
   useEffect(() => {
     const parsed = parseUsedSupports(answer?.usedSupports ?? "");
@@ -216,40 +163,55 @@ export function WidgetComponentArithmetic() {
     setColumnUnits(raw[1]);
   }, [answer?.value, supportMode]);
 
-  useEffect(() => {
-    audioTimerRef.current.forEach((timer) => window.clearTimeout(timer));
-    audioTimerRef.current = [];
+  const operatorSymbol = operation === "phép cộng" ? "+" : "-";
+  const opWord = operation === "phép cộng" ? "cộng" : "trừ";
+  const questionText =
+    operation === "phép cộng"
+      ? layout === "hàng ngang"
+        ? "Tính phép cộng 2 chữ số"
+        : "Tính phép cộng 2 chữ số"
+      : layout === "hàng ngang"
+        ? "Tính phép trừ 2 chữ số"
+        : "Tính phép trừ 2 chữ số";
 
-    if (
-      !supportModalOpen ||
-      supportModalStep !== "type2-preview" ||
-      (pendingType2Support !== "number-table" &&
-        pendingType2Support !== "number-line")
-    ) {
-      return;
-    }
+  const placeRows = useMemo<PlaceRow[]>(
+    () => [
+      {
+        placeLabel: "Hàng chục",
+        first: firstDigits.tens,
+        second: secondDigits.tens,
+        result: resultDigits.tens,
+      },
+      {
+        placeLabel: "Hàng đơn vị",
+        first: firstDigits.units,
+        second: secondDigits.units,
+        result: resultDigits.units,
+      },
+    ],
+    [firstDigits, secondDigits, resultDigits],
+  );
 
-    stepMoves.forEach((_, index) => {
-      const timeout = window.setTimeout(
-        () => {
-          playStepAudio(operation, index + 1);
-        },
-        380 + index * 520,
-      );
-      audioTimerRef.current.push(timeout);
-    });
+  const choiceOptions = useMemo(
+    () =>
+      buildChoiceOptions(
+        expectedResult,
+        0,
+        99,
+        firstNumber * 10000 + secondNumber * 100 + expectedResult,
+      ),
+    [expectedResult, firstNumber, secondNumber],
+  );
 
-    return () => {
-      audioTimerRef.current.forEach((timer) => window.clearTimeout(timer));
-      audioTimerRef.current = [];
-    };
-  }, [
-    operation,
-    pendingType2Support,
-    stepMoves,
-    supportModalOpen,
-    supportModalStep,
-  ]);
+  const effectiveAnswerMethod: AnswerMethod =
+    supportMode === "column" ? "input" : answerMethod;
+  const usedSupportLabels = useMemo(
+    () => usedSupports.map((item) => supportLabelMap[item]),
+    [usedSupports],
+  );
+  const secondDisplay = hideSecondTens
+    ? String(secondDigits.units)
+    : String(secondNumber);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && canSubmit) {
@@ -282,16 +244,14 @@ export function WidgetComponentArithmetic() {
   const readPromptSupport = () => {
     markSupportUsed("read-prompt");
     closeSupportModal();
-    speakVietnamese(
-      buildExpressionSpeech(firstNumber, secondNumber, operation, false),
-    );
+    speakVietnamese(`${firstNumber} ${opWord} ${secondNumber} bằng bao nhiêu`);
   };
 
   const readResultSupport = () => {
     markSupportUsed("read-result");
     closeSupportModal();
     speakVietnamese(
-      buildExpressionSpeech(firstNumber, secondNumber, operation, true),
+      `${firstNumber} ${opWord} ${secondNumber} bằng ${expectedResult}`,
     );
   };
 
@@ -312,11 +272,10 @@ export function WidgetComponentArithmetic() {
   };
 
   const onAnswerChange = (value: string) => {
-    writeAnswer(value.replace(/[^\d]/g, ""));
+    writeAnswer(value.replace(/[^\d]/g, "").slice(0, 2));
   };
 
-  const stepperRange =
-    operation === "phép cộng" ? { min: 2, max: 19 } : { min: 0, max: 9 };
+  const stepperRange = { min: 0, max: 99 };
 
   const adjustAnswerBy = (delta: number) => {
     const current = Number.parseInt(answer?.value ?? "", 10);
@@ -345,42 +304,12 @@ export function WidgetComponentArithmetic() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-linear-to-b from-rose-50 via-orange-50 to-amber-50">
-      <style>{`
-        @keyframes step-reveal {
-          0% {
-            opacity: 0;
-            transform: translateY(8px) scale(0.9);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes path-draw {
-          to {
-            stroke-dashoffset: 0;
-          }
-        }
-
-        @keyframes foot-fade {
-          0% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          100% {
-            opacity: 0.3;
-            transform: scale(1.1);
-          }
-        }
-      `}</style>
-
       <div className="w-full max-w-xl">
         <div className="bg-white rounded-3xl shadow-lg border border-orange-100 p-6 md:p-8">
           <div className="flex items-start justify-between gap-3 mb-6">
             <div>
               <div className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-semibold mb-2">
-                Cộng trừ lớp 1 (1-10)
+                Cộng trừ 2 chữ số (phạm vi 99)
               </div>
               <h2 className="text-xl font-black text-slate-800">
                 <Speak>{questionText}</Speak>
@@ -424,8 +353,9 @@ export function WidgetComponentArithmetic() {
 
           {supportMode === "column" ? (
             <ColumnSupportBoard
-              firstNumber={firstNumber}
-              secondNumber={secondNumber}
+              firstDigits={firstDigits}
+              secondDigits={secondDigits}
+              hideSecondTens={hideSecondTens}
               operatorSymbol={operatorSymbol}
               tensValue={columnTens}
               unitValue={columnUnits}
@@ -434,11 +364,11 @@ export function WidgetComponentArithmetic() {
               onKeyDown={onKeyDown}
               disabled={isLocked}
             />
-          ) : isHorizontalLayout ? (
+          ) : layout === "hàng ngang" ? (
             <div className="space-y-4">
               <HorizontalMathBoard
                 firstNumber={firstNumber}
-                secondNumber={secondNumber}
+                secondDisplay={secondDisplay}
                 operatorSymbol={operatorSymbol}
                 answerArea={
                   effectiveAnswerMethod === "voice" ? (
@@ -486,8 +416,9 @@ export function WidgetComponentArithmetic() {
           ) : (
             <div className="space-y-4">
               <VerticalMathBoard
-                firstNumber={firstNumber}
-                secondNumber={secondNumber}
+                firstDigits={firstDigits}
+                secondDigits={secondDigits}
+                hideSecondTens={hideSecondTens}
                 operatorSymbol={operatorSymbol}
                 answerArea={
                   effectiveAnswerMethod === "voice" ? (
@@ -547,8 +478,6 @@ export function WidgetComponentArithmetic() {
           <Feedback
             result={result}
             isLocked={isLocked}
-            correctText="Chính xác rồi!"
-            incorrectText="Chưa đúng, thử lại nhé."
             expectedResult={expectedResult}
             usedSupports={usedSupportLabels}
           />
@@ -574,15 +503,10 @@ export function WidgetComponentArithmetic() {
             <TypeTwoPreviewContent
               mode={pendingType2Support}
               operation={operation}
-              expressionText={expressionText}
               firstNumber={firstNumber}
-              secondNumber={secondNumber}
+              secondDisplay={secondDisplay}
               operatorSymbol={operatorSymbol}
-              expectedResult={expectedResult}
-              stepMoves={stepMoves}
-              firstStyle={firstStyle}
-              secondStyle={secondStyle}
-              resultStyle={resultStyle}
+              placeRows={placeRows}
             />
           }
         />
@@ -602,203 +526,69 @@ export function WidgetComponentArithmetic() {
   );
 }
 
-function getNormalizedOperands(params: ArithmeticWidgetParams): {
-  operation: "phép cộng" | "phép trừ";
+function VerticalMathBoard({
+  firstDigits,
+  secondDigits,
+  hideSecondTens,
+  operatorSymbol,
+  answerArea,
+}: {
+  firstDigits: DigitPair;
+  secondDigits: DigitPair;
+  hideSecondTens: boolean;
+  operatorSymbol: string;
+  answerArea: ReactNode;
+}) {
+  return (
+    <div className="mx-auto w-40 rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
+      <div className="font-mono text-5xl leading-tight text-slate-800">
+        <div className="grid grid-cols-[2rem_2.4rem_2.4rem] items-center gap-x-1 justify-center">
+          <span className="text-center text-slate-500">&nbsp;</span>
+          <span className="text-center">{firstDigits.tens}</span>
+          <span className="text-center">{firstDigits.units}</span>
+
+          <span className="text-center">{operatorSymbol}</span>
+          <span className="text-center">
+            {hideSecondTens ? "" : secondDigits.tens}
+          </span>
+          <span className="text-center">{secondDigits.units}</span>
+        </div>
+
+        <div className="h-1 rounded-full bg-slate-700 mt-3 mb-2" />
+
+        <div className="text-base leading-normal">{answerArea}</div>
+      </div>
+    </div>
+  );
+}
+
+function HorizontalMathBoard({
+  firstNumber,
+  secondDisplay,
+  operatorSymbol,
+  answerArea,
+}: {
   firstNumber: number;
-  secondNumber: number;
-} {
-  const operation = params.operation;
+  secondDisplay: string;
+  operatorSymbol: string;
+  answerArea: ReactNode;
+}) {
+  return (
+    <div className="mx-auto w-full max-w-md rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
+      <div className="font-mono text-4xl md:text-5xl leading-tight text-slate-800">
+        <div className="flex items-center justify-center gap-3 md:gap-4">
+          <span>{firstNumber}</span>
+          <span className="text-orange-500">{operatorSymbol}</span>
+          <span>{secondDisplay}</span>
+          <span className="text-slate-500">=</span>
 
-  if (operation === "phép cộng") {
-    return {
-      operation,
-      firstNumber: clamp(params.addFirstNumber ?? 1, 1, 10),
-      secondNumber: clamp(params.addSecondNumber ?? 1, 1, 9),
-    };
-  }
-
-  return {
-    operation,
-    firstNumber: clamp(params.numberMax, 1, 10),
-    secondNumber: clamp(params.numberMin, 1, 9),
-  };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getNumberStyle(value: number): NumberStyle {
-  const hue = (value * 37) % 360;
-  return {
-    bg: `hsl(${hue} 90% 92%)`,
-    text: `hsl(${hue} 65% 28%)`,
-    border: `hsl(${hue} 75% 58%)`,
-  };
-}
-
-function buildStepMoves(
-  start: number,
-  distance: number,
-  operation: "add" | "subtract",
-): StepMove[] {
-  const direction = operation === "add" ? 1 : -1;
-  const moves: StepMove[] = [];
-
-  for (let step = 1; step <= distance; step += 1) {
-    const from = start + direction * (step - 1);
-    const to = start + direction * step;
-    const sign = direction > 0 ? "+" : "-";
-    moves.push({ from, to, label: `${sign}${step}` });
-  }
-
-  return moves;
-}
-
-function splitDigitsByPlace(value: number): {
-  tens: string;
-  units: string;
-} {
-  const abs = Math.abs(value);
-  const tens = abs >= 10 ? String(Math.floor(abs / 10)) : "";
-  const units = String(abs % 10);
-  return { tens, units };
-}
-
-function buildChoiceOptions(
-  correct: number,
-  min: number,
-  max: number,
-  seed: number,
-): number[] {
-  const optionSet = new Set<number>();
-  optionSet.add(correct);
-
-  const offsets = [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6];
-  for (const offset of offsets) {
-    if (optionSet.size >= 4) break;
-    const candidate = correct + offset;
-    if (candidate >= min && candidate <= max) {
-      optionSet.add(candidate);
-    }
-  }
-
-  for (let value = min; value <= max && optionSet.size < 4; value += 1) {
-    optionSet.add(value);
-  }
-
-  return deterministicShuffle(Array.from(optionSet).slice(0, 4), seed);
-}
-
-function deterministicShuffle(values: number[], seed: number): number[] {
-  const output = [...values];
-  let currentSeed = seed || 1;
-
-  for (let i = output.length - 1; i > 0; i -= 1) {
-    currentSeed = (currentSeed * 9301 + 49297) % 233280;
-    const ratio = currentSeed / 233280;
-    const j = Math.floor(ratio * (i + 1));
-    [output[i], output[j]] = [output[j], output[i]];
-  }
-
-  return output;
-}
-
-function serializeUsedSupports(items: UsedSupport[]): string {
-  return Array.from(new Set(items)).join("|");
-}
-
-function parseUsedSupports(raw: string): UsedSupport[] {
-  if (!raw) return [];
-
-  const parsed = raw
-    .split("|")
-    .map((item) => item.trim())
-    .filter((item): item is UsedSupport =>
-      [
-        "column",
-        "read-prompt",
-        "read-result",
-        "sticks",
-        "lego",
-        "number-table",
-        "number-line",
-      ].includes(item),
-    );
-
-  return Array.from(new Set(parsed));
-}
-
-function numberToVietnamese(value: number): string {
-  const words: Record<number, string> = {
-    0: "không",
-    1: "một",
-    2: "hai",
-    3: "ba",
-    4: "bốn",
-    5: "năm",
-    6: "sáu",
-    7: "bảy",
-    8: "tám",
-    9: "chín",
-    10: "mười",
-    11: "mười một",
-    12: "mười hai",
-    13: "mười ba",
-    14: "mười bốn",
-    15: "mười lăm",
-    16: "mười sáu",
-    17: "mười bảy",
-    18: "mười tám",
-    19: "mười chín",
-  };
-
-  return words[value] ?? String(value);
-}
-
-function buildExpressionSpeech(
-  firstNumber: number,
-  secondNumber: number,
-  operation: "phép cộng" | "phép trừ",
-  includeResult: boolean,
-): string {
-  const opWord = operation === "phép cộng" ? "cộng" : "trừ";
-  const firstWord = numberToVietnamese(firstNumber);
-  const secondWord = numberToVietnamese(secondNumber);
-
-  if (!includeResult) {
-    return `${firstWord} ${opWord} ${secondWord} bằng bao nhiêu`;
-  }
-
-  const result =
-    operation === "phép cộng"
-      ? firstNumber + secondNumber
-      : firstNumber - secondNumber;
-  const resultWord = numberToVietnamese(result);
-  return `${firstWord} ${opWord} ${secondWord} bằng ${resultWord}`;
-}
-
-function speakVietnamese(text: string) {
-  void WidgetRuntime.requestTtsSpeak({
-    text,
-    lang: "vi-VN",
-    rate: 0.95,
-    timeoutMs: 25000,
-  }).catch(() => undefined);
-}
-
-function playStepAudio(operation: "phép cộng" | "phép trừ", step: number) {
-  const word = stepWordMap[step];
-  if (!word) return;
-
-  const fileName =
-    operation === "phép cộng" ? `add-${word}.wav` : `subtraction-${word}.wav`;
-
-  const audioSrc = audioFileByName[fileName];
-  if (!audioSrc) return;
-
-  const audio = new Audio(audioSrc);
-  void audio.play().catch(() => undefined);
+          <div className="w-32 md:w-36 text-base leading-normal font-sans">
+            {answerArea}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function AnswerInput({
@@ -820,41 +610,41 @@ function AnswerInput({
   onIncrement?: () => void;
   onDecrement?: () => void;
 }) {
+  if (showStepper && stepperOrientation === "vertical") {
+    return (
+      <div className="mx-auto w-28 flex flex-col items-center gap-2">
+        <button
+          type="button"
+          onClick={onIncrement}
+          disabled={disabled}
+          className="h-10 w-full rounded-lg border-2 border-orange-200 bg-white text-2xl font-black text-orange-600 hover:bg-orange-50 disabled:opacity-60"
+        >
+          +
+        </button>
+
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={onKeyDown}
+          disabled={disabled}
+          inputMode="numeric"
+          placeholder="?"
+          className="w-full h-14 rounded-lg border-2 border-orange-200 bg-white text-center px-3 text-4xl font-bold text-slate-700 focus:outline-none focus:border-orange-400 disabled:bg-slate-100"
+        />
+
+        <button
+          type="button"
+          onClick={onDecrement}
+          disabled={disabled}
+          className="h-10 w-full rounded-lg border-2 border-orange-200 bg-white text-2xl font-black text-orange-600 hover:bg-orange-50 disabled:opacity-60"
+        >
+          -
+        </button>
+      </div>
+    );
+  }
+
   if (showStepper) {
-    if (stepperOrientation === "vertical") {
-      return (
-        <div className="mx-auto w-28 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={onIncrement}
-            disabled={disabled}
-            className="h-10 w-full rounded-lg border-2 border-orange-200 bg-white text-2xl font-black text-orange-600 hover:bg-orange-50 disabled:opacity-60"
-          >
-            +
-          </button>
-
-          <input
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            onKeyDown={onKeyDown}
-            disabled={disabled}
-            inputMode="numeric"
-            placeholder="?"
-            className="w-full h-14 rounded-lg border-2 border-orange-200 bg-white text-center px-3 text-4xl font-bold text-slate-700 focus:outline-none focus:border-orange-400 disabled:bg-slate-100"
-          />
-
-          <button
-            type="button"
-            onClick={onDecrement}
-            disabled={disabled}
-            className="h-10 w-full rounded-lg border-2 border-orange-200 bg-white text-2xl font-black text-orange-600 hover:bg-orange-50 disabled:opacity-60"
-          >
-            -
-          </button>
-        </div>
-      );
-    }
-
     return (
       <div className="relative w-full">
         <button
@@ -901,67 +691,10 @@ function AnswerInput({
   );
 }
 
-function VerticalMathBoard({
-  firstNumber,
-  secondNumber,
-  operatorSymbol,
-  answerArea,
-}: {
-  firstNumber: number;
-  secondNumber: number;
-  operatorSymbol: string;
-  answerArea: ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-40 rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
-      <div className="font-mono text-5xl leading-tight text-slate-800">
-        <div className="grid grid-cols-[auto_1fr] items-center gap-x-3">
-          <span className="w-8 text-center text-slate-500">&nbsp;</span>
-          <span className="text-right">{firstNumber}</span>
-          <span className="w-8 text-center">{operatorSymbol}</span>
-          <span className="text-right">{secondNumber}</span>
-        </div>
-
-        <div className="h-1 rounded-full bg-slate-700 mt-3 mb-2" />
-
-        <div className="text-base leading-normal">{answerArea}</div>
-      </div>
-    </div>
-  );
-}
-
-function HorizontalMathBoard({
-  firstNumber,
-  secondNumber,
-  operatorSymbol,
-  answerArea,
-}: {
-  firstNumber: number;
-  secondNumber: number;
-  operatorSymbol: string;
-  answerArea: ReactNode;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-md rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
-      <div className="font-mono text-4xl md:text-5xl leading-tight text-slate-800">
-        <div className="flex items-center justify-center gap-3 md:gap-4">
-          <span>{firstNumber}</span>
-          <span className="text-orange-500">{operatorSymbol}</span>
-          <span>{secondNumber}</span>
-          <span className="text-slate-500">=</span>
-
-          <div className="w-32 md:w-36 text-base leading-normal font-sans">
-            {answerArea}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ColumnSupportBoard({
-  firstNumber,
-  secondNumber,
+  firstDigits,
+  secondDigits,
+  hideSecondTens,
   operatorSymbol,
   tensValue,
   unitValue,
@@ -970,8 +703,9 @@ function ColumnSupportBoard({
   onKeyDown,
   disabled,
 }: {
-  firstNumber: number;
-  secondNumber: number;
+  firstDigits: DigitPair;
+  secondDigits: DigitPair;
+  hideSecondTens: boolean;
   operatorSymbol: string;
   tensValue: string;
   unitValue: string;
@@ -980,9 +714,6 @@ function ColumnSupportBoard({
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   disabled: boolean;
 }) {
-  const firstDigits = splitDigitsByPlace(firstNumber);
-  const secondDigits = splitDigitsByPlace(secondNumber);
-
   const tensStyle = {
     bg: "#dbeafe",
     border: "#60a5fa",
@@ -996,7 +727,7 @@ function ColumnSupportBoard({
 
   return (
     <div className="mx-auto w-80 rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
-      <div className="grid grid-cols-[2.5rem_3.2rem_3.2rem] gap-2 font-mono text-5xl justify-center">
+      <div className="grid grid-cols-[2.2rem_2.8rem_2.8rem] gap-1 font-mono text-5xl justify-center">
         <div className="rounded-lg h-16 flex items-center justify-center text-xl font-bold text-slate-500 bg-slate-100">
           &nbsp;
         </div>
@@ -1009,7 +740,7 @@ function ColumnSupportBoard({
             borderColor: tensStyle.border,
           }}
         >
-          {firstDigits.tens || ""}
+          {firstDigits.tens}
         </div>
 
         <div
@@ -1035,7 +766,7 @@ function ColumnSupportBoard({
             borderColor: tensStyle.border,
           }}
         >
-          {secondDigits.tens || ""}
+          {hideSecondTens ? "" : secondDigits.tens}
         </div>
 
         <div
@@ -1052,7 +783,7 @@ function ColumnSupportBoard({
 
       <div className="h-1 rounded-full bg-slate-700" />
 
-      <div className="mx-auto grid grid-cols-[2.5rem_3.2rem_3.2rem] gap-2 justify-center">
+      <div className="mx-auto grid grid-cols-[2.2rem_2.8rem_2.8rem] gap-1 justify-center">
         <div className="h-14" />
 
         <input
@@ -1061,7 +792,6 @@ function ColumnSupportBoard({
           onKeyDown={onKeyDown}
           disabled={disabled}
           inputMode="numeric"
-          placeholder=""
           className="h-14 rounded-lg border-2 text-center text-3xl font-bold focus:outline-none disabled:bg-slate-100"
           style={{
             backgroundColor: tensStyle.bg,
@@ -1076,7 +806,6 @@ function ColumnSupportBoard({
           onKeyDown={onKeyDown}
           disabled={disabled}
           inputMode="numeric"
-          placeholder=""
           className="h-14 rounded-lg border-2 text-center text-3xl font-bold focus:outline-none disabled:bg-slate-100"
           style={{
             backgroundColor: unitsStyle.bg,
@@ -1126,469 +855,307 @@ function ChoiceAnswerBoard({
 }
 
 function HorizontalExpression({
-  expressionText,
   firstNumber,
-  secondNumber,
+  secondDisplay,
   operatorSymbol,
-  firstStyle,
-  secondStyle,
 }: {
-  expressionText: string;
   firstNumber: number;
-  secondNumber: number;
+  secondDisplay: string;
   operatorSymbol: string;
-  firstStyle: NumberStyle;
-  secondStyle: NumberStyle;
 }) {
   return (
     <div className="rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
       <div className="flex items-center justify-center gap-3 text-4xl md:text-5xl font-black font-mono">
-        <span
-          className="rounded-xl px-3 py-1 border"
-          style={{
-            backgroundColor: firstStyle.bg,
-            color: firstStyle.text,
-            borderColor: firstStyle.border,
-          }}
-        >
+        <span className="rounded-xl px-3 py-1 border border-orange-300 bg-white text-slate-700">
           {firstNumber}
         </span>
         <span className="text-orange-500">{operatorSymbol}</span>
-        <span
-          className="rounded-xl px-3 py-1 border"
-          style={{
-            backgroundColor: secondStyle.bg,
-            color: secondStyle.text,
-            borderColor: secondStyle.border,
-          }}
-        >
-          {secondNumber}
+        <span className="rounded-xl px-3 py-1 border border-orange-300 bg-white text-slate-700">
+          {secondDisplay}
         </span>
         <span className="text-slate-500">=</span>
         <span className="rounded-xl px-3 py-1 border border-slate-300 bg-white text-slate-500">
           ?
         </span>
       </div>
-
-      <p className="text-center text-xs text-slate-500 mt-2">
-        {expressionText}
-      </p>
     </div>
   );
 }
 
-function SticksSupport({
-  firstNumber,
-  secondNumber,
-  expectedResult,
+function PlaceExpressionCards({
+  rows,
   operation,
-  firstStyle,
-  secondStyle,
-  resultStyle,
 }: {
-  firstNumber: number;
-  secondNumber: number;
-  expectedResult: number;
-  operation: "phép cộng" | "phép trừ";
-  firstStyle: NumberStyle;
-  secondStyle: NumberStyle;
-  resultStyle: NumberStyle;
+  rows: PlaceRow[];
+  operation: Operation;
 }) {
+  const symbol = operation === "phép cộng" ? "+" : "-";
+
   return (
-    <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 space-y-3">
-      <div className="flex items-start justify-center gap-3 flex-wrap md:flex-nowrap">
-        <VisualCounterCard
-          value={firstNumber}
-          style={firstStyle}
-          strike={false}
-          renderItem={(key, style) => <StickItem key={key} style={style} />}
-        />
-
-        <div className="text-4xl font-black text-sky-700 mt-8 px-1">
-          {operation === "phép cộng" ? "+" : "-"}
-        </div>
-
-        <VisualCounterCard
-          value={secondNumber}
-          style={secondStyle}
-          strike={false}
-          renderItem={(key, style) => <StickItem key={key} style={style} />}
-        />
-      </div>
-
-      <div className="pt-2 border-t border-sky-200 space-y-2">
+    <div className="grid gap-2 md:grid-cols-2">
+      {rows.map((row) => (
         <div
-          className="inline-block rounded-xl border p-2"
-          style={{ borderColor: resultStyle.border }}
+          key={row.placeLabel}
+          className="rounded-lg border border-cyan-300 bg-white px-3 py-2"
         >
-          <div className="grid grid-cols-5 gap-1">
-            {Array.from({ length: expectedResult }).map((_, index) => (
-              <StickItem key={`result-stick-${index}`} style={resultStyle} />
-            ))}
+          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">
+            {row.placeLabel}
+          </p>
+          <p className="text-2xl font-black text-slate-700 font-mono">
+            {row.first} {symbol} {row.second} = {row.result}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PlaceItemsSupport({
+  rows,
+  operation,
+  mode,
+}: {
+  rows: PlaceRow[];
+  operation: Operation;
+  mode: "sticks" | "lego";
+}) {
+  const borderClass =
+    mode === "sticks"
+      ? "border-sky-200 bg-sky-50"
+      : "border-violet-200 bg-violet-50";
+  const symbolClass = mode === "sticks" ? "text-sky-700" : "text-violet-700";
+
+  return (
+    <div className={`rounded-2xl border ${borderClass} p-4 space-y-3`}>
+      {rows.map((row) => (
+        <div
+          key={`row-items-${row.placeLabel}`}
+          className="rounded-xl bg-white/80 border border-white p-3"
+        >
+          <p className="text-xs font-semibold text-slate-600 mb-2">
+            {row.placeLabel}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <VisualCount value={row.first} mode={mode} />
+            <span className={`text-3xl font-black ${symbolClass}`}>
+              {operation === "phép cộng" ? "+" : "-"}
+            </span>
+            <VisualCount value={row.second} mode={mode} />
+            <span className="text-3xl font-black text-slate-500">=</span>
+            <VisualCount value={row.result} mode={mode} />
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }
 
-function StickItem({ style }: { style: NumberStyle }) {
-  return (
-    <svg
-      width="16"
-      height="60"
-      viewBox="0 0 16 60"
-      role="img"
-      aria-label="que tính"
-    >
-      <rect x="2" y="2" width="12" height="56" rx="4" fill={style.border} />
-      <rect x="4" y="4" width="8" height="52" rx="3" fill={style.bg} />
-    </svg>
-  );
-}
-
-function LegoSupport({
-  firstNumber,
-  secondNumber,
-  expectedResult,
-  operation,
-  firstStyle,
-  secondStyle,
-  resultStyle,
-}: {
-  firstNumber: number;
-  secondNumber: number;
-  expectedResult: number;
-  operation: "phép cộng" | "phép trừ";
-  firstStyle: NumberStyle;
-  secondStyle: NumberStyle;
-  resultStyle: NumberStyle;
-}) {
-  return (
-    <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 space-y-3">
-      <div className="flex items-start justify-center gap-3 flex-wrap md:flex-nowrap">
-        <VisualCounterCard
-          value={firstNumber}
-          style={firstStyle}
-          strike={false}
-          renderItem={(key, style) => <LegoItem key={key} style={style} />}
-        />
-
-        <div className="text-4xl font-black text-violet-700 mt-8 px-1">
-          {operation === "phép cộng" ? "+" : "-"}
-        </div>
-
-        <VisualCounterCard
-          value={secondNumber}
-          style={secondStyle}
-          strike={false}
-          renderItem={(key, style) => <LegoItem key={key} style={style} />}
-        />
-      </div>
-
-      <div className="pt-2 border-t border-violet-200 space-y-2">
-        <div
-          className="inline-block rounded-xl border p-2"
-          style={{ borderColor: resultStyle.border }}
-        >
-          <div className="grid grid-cols-5 gap-2">
-            {Array.from({ length: expectedResult }).map((_, index) => (
-              <LegoItem key={`result-lego-${index}`} style={resultStyle} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LegoItem({ style }: { style: NumberStyle }) {
-  return (
-    <svg
-      width="30"
-      height="24"
-      viewBox="0 0 30 24"
-      role="img"
-      aria-label="khối lego"
-    >
-      <rect x="2" y="8" width="26" height="14" rx="3" fill={style.border} />
-      <circle cx="10" cy="8" r="3" fill={style.border} />
-      <circle cx="20" cy="8" r="3" fill={style.border} />
-      <rect x="4" y="10" width="22" height="10" rx="2" fill={style.bg} />
-    </svg>
-  );
-}
-
-function VisualCounterCard({
+function VisualCount({
   value,
-  style,
-  strike,
-  renderItem,
+  mode,
 }: {
   value: number;
-  style: NumberStyle;
-  strike: boolean;
-  renderItem: (key: string, style: NumberStyle) => ReactNode;
+  mode: "sticks" | "lego";
 }) {
   return (
-    <div
-      className="relative rounded-xl border p-2"
-      style={{
-        borderColor: style.border,
-        backgroundColor: "#fff",
-        minWidth: 150,
-      }}
-    >
-      <div
-        className="inline-flex items-center justify-center min-w-10 h-10 px-3 rounded-full text-2xl font-black mb-2 border"
-        style={{
-          backgroundColor: style.bg,
-          color: style.text,
-          borderColor: style.border,
-        }}
-      >
-        {value}
-      </div>
-
-      <div className="grid grid-cols-5 gap-1 justify-items-center">
+    <div className="rounded-lg border border-slate-200 bg-white p-2 min-w-28">
+      <div className="text-sm font-bold text-slate-600 mb-1">{value}</div>
+      <div className="grid grid-cols-5 gap-1">
         {Array.from({ length: value }).map((_, index) =>
-          renderItem(`visual-item-${value}-${index}`, style),
+          mode === "sticks" ? (
+            <StickItem key={`stick-${value}-${index}`} />
+          ) : (
+            <LegoItem key={`lego-${value}-${index}`} />
+          ),
         )}
       </div>
-
-      {strike && (
-        <svg
-          className="absolute inset-0 pointer-events-none"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <line
-            x1="8"
-            y1="8"
-            x2="92"
-            y2="92"
-            stroke="#ef4444"
-            strokeWidth="4"
-            strokeLinecap="round"
-          />
-          <line
-            x1="8"
-            y1="92"
-            x2="92"
-            y2="8"
-            stroke="#ef4444"
-            strokeWidth="4"
-            strokeLinecap="round"
-          />
-        </svg>
-      )}
     </div>
+  );
+}
+
+function StickItem() {
+  return (
+    <svg width="12" height="40" viewBox="0 0 12 40" aria-hidden="true">
+      <rect x="2" y="1" width="8" height="38" rx="3" fill="#38bdf8" />
+      <rect x="3" y="2" width="6" height="36" rx="2" fill="#e0f2fe" />
+    </svg>
+  );
+}
+
+function LegoItem() {
+  return (
+    <svg width="20" height="16" viewBox="0 0 20 16" aria-hidden="true">
+      <rect x="1" y="5" width="18" height="10" rx="2" fill="#a78bfa" />
+      <circle cx="7" cy="5" r="2" fill="#a78bfa" />
+      <circle cx="13" cy="5" r="2" fill="#a78bfa" />
+      <rect x="2" y="6" width="16" height="8" rx="2" fill="#ede9fe" />
+    </svg>
   );
 }
 
 function NumberTableSupport({
-  start,
-  target,
-  stepMoves,
-  accentStyle,
+  rows,
+  operation,
 }: {
-  start: number;
-  target: number;
-  stepMoves: StepMove[];
-  accentStyle: NumberStyle;
+  rows: PlaceRow[];
+  operation: Operation;
 }) {
-  const numbers = Array.from({ length: 20 }, (_, index) => index);
-  const stepIndexByValue = new Map<number, number>();
-
-  stepMoves.forEach((move, index) => {
-    stepIndexByValue.set(move.to, index);
-  });
+  const op = operation === "phép cộng" ? "add" : "subtract";
 
   return (
-    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-      <div className="grid grid-cols-10 gap-2">
-        {numbers.map((value) => {
-          const isStart = value === start;
-          const isTarget = value === target;
-          const stepIndex = stepIndexByValue.get(value);
+    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 space-y-3">
+      {rows.map((row) => {
+        const moves = buildStepMoves(row.first, row.second, op);
+        const stepIndexByValue = new Map<number, number>();
+        moves.forEach((move, index) => {
+          stepIndexByValue.set(move.to, index);
+        });
 
-          return (
-            <div
-              key={`table-${value}`}
-              className="relative h-16 rounded-lg border flex items-center justify-center font-bold overflow-hidden"
-              style={{
-                borderColor:
-                  isStart || isTarget ? accentStyle.border : "#cbd5e1",
-                backgroundColor: isTarget
-                  ? "#fde68a"
-                  : isStart
-                    ? accentStyle.bg
-                    : "#ffffff",
-                color: isStart || isTarget ? accentStyle.text : "#334155",
-              }}
-            >
-              <span className="text-2xl font-black z-10">{value}</span>
+        return (
+          <div
+            key={`table-${row.placeLabel}`}
+            className="rounded-xl border border-rose-200 bg-white p-3"
+          >
+            <p className="text-xs font-semibold text-rose-700 mb-2">
+              {row.placeLabel}
+            </p>
+            <div className="grid grid-cols-10 gap-1">
+              {Array.from({ length: 10 }, (_, value) => {
+                const isStart = value === row.first;
+                const isTarget = value === row.result;
+                const stepIndex = stepIndexByValue.get(value);
 
-              {typeof stepIndex === "number" && (
-                <>
+                return (
                   <div
-                    className="absolute inset-0 flex items-center justify-center text-4xl z-20"
+                    key={`cell-${row.placeLabel}-${value}`}
+                    className="h-12 rounded-lg border flex items-center justify-center font-bold relative"
                     style={{
-                      animation: isTarget
-                        ? "foot-fade 1000ms ease forwards"
-                        : "step-reveal 700ms ease forwards",
-                      animationDelay: `${stepIndex * 520}ms`,
-                      opacity: 0,
+                      borderColor: isStart || isTarget ? "#f43f5e" : "#cbd5e1",
+                      backgroundColor: isTarget
+                        ? "#fde68a"
+                        : isStart
+                          ? "#ffe4e6"
+                          : "#ffffff",
                     }}
                   >
-                    👣
+                    <span>{value}</span>
+                    {typeof stepIndex === "number" && (
+                      <span className="absolute -bottom-1 text-[10px] font-black text-rose-600">
+                        {moves[stepIndex].label}
+                      </span>
+                    )}
                   </div>
-
-                  <div
-                    className="absolute bottom-1 left-1/2 -translate-x-1/2 text-lg font-black text-rose-700 z-30"
-                    style={{
-                      animation: "step-reveal 700ms ease forwards",
-                      animationDelay: `${stepIndex * 520 + 180}ms`,
-                      opacity: 0,
-                    }}
-                  >
-                    {stepMoves[stepIndex].label}
-                  </div>
-                </>
-              )}
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function NumberLineSupport({
-  start,
-  target,
-  stepMoves,
-  accentStyle,
+  rows,
+  operation,
 }: {
-  start: number;
-  target: number;
-  stepMoves: StepMove[];
-  accentStyle: NumberStyle;
+  rows: PlaceRow[];
+  operation: Operation;
 }) {
-  const rangeMin = Math.max(0, Math.min(start, target) - 1);
-  const rangeMax = Math.min(19, Math.max(start, target) + 1);
-  const values = Array.from(
-    { length: rangeMax - rangeMin + 1 },
-    (_, index) => rangeMin + index,
-  );
-
-  const width = Math.max(420, values.length * 95);
-  const height = 190;
-  const baselineY = 106;
-  const leftPadding = 34;
-  const rightPadding = 34;
-  const xStep =
-    values.length <= 1
-      ? 0
-      : (width - leftPadding - rightPadding) / (values.length - 1);
-
-  const getX = (value: number) => leftPadding + (value - rangeMin) * xStep;
+  const op = operation === "phép cộng" ? "add" : "subtract";
 
   return (
-    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
-        <defs>
-          <marker
-            id="arrow-head"
-            markerWidth="8"
-            markerHeight="6"
-            refX="8"
-            refY="3"
-            orient="auto"
+    <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 space-y-3">
+      {rows.map((row) => {
+        const moves = buildStepMoves(row.first, row.second, op);
+        const width = 430;
+        const height = 120;
+        const baselineY = 72;
+        const leftPadding = 20;
+        const rightPadding = 20;
+        const xStep = (width - leftPadding - rightPadding) / 9;
+        const getX = (value: number) => leftPadding + value * xStep;
+
+        return (
+          <div
+            key={`line-${row.placeLabel}`}
+            className="rounded-xl border border-cyan-200 bg-white p-3 overflow-x-auto"
           >
-            <polygon points="0 0, 8 3, 0 6" fill={accentStyle.border} />
-          </marker>
-        </defs>
-
-        <line
-          x1={leftPadding}
-          y1={baselineY}
-          x2={width - rightPadding}
-          y2={baselineY}
-          stroke="#64748b"
-          strokeWidth="3"
-        />
-
-        {values.map((value) => {
-          const x = getX(value);
-          const isStart = value === start;
-          const isTarget = value === target;
-
-          return (
-            <g key={`line-point-${value}`}>
-              <circle
-                cx={x}
-                cy={baselineY}
-                r={isStart || isTarget ? 7 : 5}
-                fill={isStart || isTarget ? accentStyle.border : "#94a3b8"}
-              />
-              <text
-                x={x}
-                y={baselineY + 24}
-                fontSize="17"
-                fontWeight="700"
-                textAnchor="middle"
-                fill="#334155"
-              >
-                {value}
-              </text>
-            </g>
-          );
-        })}
-
-        {stepMoves.map((move, index) => {
-          const x1 = getX(move.from);
-          const x2 = getX(move.to);
-          const mid = (x1 + x2) / 2;
-          const arcHeight = 28 + (index % 2) * 10;
-          const path = `M ${x1} ${baselineY} Q ${mid} ${arcHeight} ${x2} ${baselineY}`;
-          const length = Math.abs(x2 - x1) * 1.9;
-
-          return (
-            <g key={`line-move-${move.from}-${move.to}-${index}`}>
-              <path
-                d={path}
-                fill="none"
-                stroke={accentStyle.border}
+            <p className="text-xs font-semibold text-cyan-700 mb-2">
+              {row.placeLabel}
+            </p>
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              className="min-w-[420px] w-full"
+            >
+              <line
+                x1={leftPadding}
+                y1={baselineY}
+                x2={width - rightPadding}
+                y2={baselineY}
+                stroke="#64748b"
                 strokeWidth="3"
-                markerEnd="url(#arrow-head)"
-                strokeDasharray={length}
-                strokeDashoffset={length}
-                style={{
-                  animation: "path-draw 950ms ease forwards",
-                  animationDelay: `${index * 520}ms`,
-                }}
               />
-              <text
-                x={mid}
-                y={arcHeight - 10}
-                fontSize="20"
-                fontWeight="800"
-                textAnchor="middle"
-                fill={accentStyle.text}
-                style={{
-                  animation: "step-reveal 700ms ease forwards",
-                  animationDelay: `${index * 520 + 240}ms`,
-                  opacity: 0,
-                }}
-              >
-                {move.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+
+              {Array.from({ length: 10 }, (_, value) => {
+                const x = getX(value);
+                const isStart = value === row.first;
+                const isTarget = value === row.result;
+
+                return (
+                  <g key={`point-${row.placeLabel}-${value}`}>
+                    <circle
+                      cx={x}
+                      cy={baselineY}
+                      r={isStart || isTarget ? 6 : 4}
+                      fill={isStart || isTarget ? "#06b6d4" : "#94a3b8"}
+                    />
+                    <text
+                      x={x}
+                      y={baselineY + 18}
+                      fontSize="14"
+                      fontWeight="700"
+                      textAnchor="middle"
+                      fill="#334155"
+                    >
+                      {value}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {moves.map((move, index) => {
+                const x1 = getX(move.from);
+                const x2 = getX(move.to);
+                const mid = (x1 + x2) / 2;
+                const arcHeight = 34 + (index % 2) * 8;
+                const path = `M ${x1} ${baselineY} Q ${mid} ${arcHeight} ${x2} ${baselineY}`;
+
+                return (
+                  <g key={`move-${row.placeLabel}-${index}`}>
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke="#06b6d4"
+                      strokeWidth="2.5"
+                    />
+                    <text
+                      x={mid}
+                      y={arcHeight - 6}
+                      fontSize="11"
+                      fontWeight="800"
+                      textAnchor="middle"
+                      fill="#0e7490"
+                    >
+                      {move.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1596,77 +1163,47 @@ function NumberLineSupport({
 function TypeTwoPreviewContent({
   mode,
   operation,
-  expressionText,
   firstNumber,
-  secondNumber,
+  secondDisplay,
   operatorSymbol,
-  expectedResult,
-  stepMoves,
-  firstStyle,
-  secondStyle,
-  resultStyle,
+  placeRows,
 }: {
   mode: Type2SupportMode;
-  operation: "phép cộng" | "phép trừ";
-  expressionText: string;
+  operation: Operation;
   firstNumber: number;
-  secondNumber: number;
+  secondDisplay: string;
   operatorSymbol: string;
-  expectedResult: number;
-  stepMoves: StepMove[];
-  firstStyle: NumberStyle;
-  secondStyle: NumberStyle;
-  resultStyle: NumberStyle;
+  placeRows: PlaceRow[];
 }) {
-  const supportBody =
-    mode === "sticks" ? (
-      <SticksSupport
-        firstNumber={firstNumber}
-        secondNumber={secondNumber}
-        expectedResult={expectedResult}
-        operation={operation}
-        firstStyle={firstStyle}
-        secondStyle={secondStyle}
-        resultStyle={resultStyle}
-      />
-    ) : mode === "lego" ? (
-      <LegoSupport
-        firstNumber={firstNumber}
-        secondNumber={secondNumber}
-        expectedResult={expectedResult}
-        operation={operation}
-        firstStyle={firstStyle}
-        secondStyle={secondStyle}
-        resultStyle={resultStyle}
-      />
-    ) : mode === "number-table" ? (
-      <NumberTableSupport
-        start={firstNumber}
-        target={expectedResult}
-        stepMoves={stepMoves}
-        accentStyle={secondStyle}
-      />
-    ) : (
-      <NumberLineSupport
-        start={firstNumber}
-        target={expectedResult}
-        stepMoves={stepMoves}
-        accentStyle={secondStyle}
-      />
-    );
-
   return (
     <div className="space-y-3">
       <HorizontalExpression
-        expressionText={expressionText}
         firstNumber={firstNumber}
-        secondNumber={secondNumber}
+        secondDisplay={secondDisplay}
         operatorSymbol={operatorSymbol}
-        firstStyle={firstStyle}
-        secondStyle={secondStyle}
       />
 
-      {supportBody}
+      <PlaceExpressionCards rows={placeRows} operation={operation} />
+
+      {mode === "sticks" && (
+        <PlaceItemsSupport
+          rows={placeRows}
+          operation={operation}
+          mode="sticks"
+        />
+      )}
+
+      {mode === "lego" && (
+        <PlaceItemsSupport rows={placeRows} operation={operation} mode="lego" />
+      )}
+
+      {mode === "number-table" && (
+        <NumberTableSupport rows={placeRows} operation={operation} />
+      )}
+
+      {mode === "number-line" && (
+        <NumberLineSupport rows={placeRows} operation={operation} />
+      )}
     </div>
   );
 }
@@ -1727,14 +1264,14 @@ function SupportModal({
             />
 
             <SupportOptionCard
-              title="Hỗ trợ đặt tính theo hàng"
+              title="Hỗ trợ đặt tính theo cột"
               colorClass="border-emerald-200 bg-emerald-50 hover:bg-emerald-100"
               onClick={onSelectTypeOne}
               illustration={<SupportIllustration kind="column" />}
             />
 
             <SupportOptionCard
-              title="Hỗ trợ bằng tia số hoặc bảng tính"
+              title="Hỗ trợ bằng tia số hoặc bảng số"
               colorClass="border-cyan-200 bg-cyan-50 hover:bg-cyan-100"
               onClick={onSelectTypeTwo}
               illustration={<SupportIllustration kind="number-line" />}
@@ -1881,11 +1418,6 @@ function SupportIllustration({
           strokeWidth="3"
           strokeLinecap="round"
         />
-        {kind === "read-result" && (
-          <text x="54" y="16" fontSize="10" fontWeight="700" fill="#be123c">
-            50%
-          </text>
-        )}
       </svg>
     );
   }
@@ -1916,17 +1448,6 @@ function SupportIllustration({
             fill="#38bdf8"
           />
         ))}
-        {[0, 1, 2].map((i) => (
-          <rect
-            key={`s2-${i}`}
-            x={44 + i * 8}
-            y="6"
-            width="5"
-            height="34"
-            rx="2"
-            fill="#a78bfa"
-          />
-        ))}
       </svg>
     );
   }
@@ -1938,8 +1459,6 @@ function SupportIllustration({
         <circle cx="16" cy="18" r="3" fill="#60a5fa" />
         <circle cx="24" cy="18" r="3" fill="#60a5fa" />
         <rect x="40" y="12" width="24" height="22" rx="3" fill="#f472b6" />
-        <circle cx="48" cy="12" r="3" fill="#f472b6" />
-        <circle cx="56" cy="12" r="3" fill="#f472b6" />
       </svg>
     );
   }
@@ -1961,9 +1480,6 @@ function SupportIllustration({
             />
           )),
         )}
-        <text x="41" y="30" fontSize="14">
-          👣
-        </text>
       </svg>
     );
   }
@@ -2052,15 +1568,11 @@ function AnswerMethodModal({
 function Feedback({
   result,
   isLocked,
-  correctText,
-  incorrectText,
   expectedResult,
   usedSupports,
 }: {
   result: SubmissionResult;
   isLocked: boolean;
-  correctText: string;
-  incorrectText: string;
   expectedResult: number;
   usedSupports: string[];
 }) {
@@ -2074,15 +1586,14 @@ function Feedback({
           : "bg-red-50 border-red-200"
       }`}
     >
-      <div className="text-2xl mb-1">{result.isCorrect ? "🌟" : "💡"}</div>
       <p
         className={`font-semibold ${
           result.isCorrect ? "text-green-700" : "text-red-700"
         }`}
       >
         {result.isCorrect
-          ? correctText
-          : `${incorrectText} Đáp án đúng là ${expectedResult}.`}
+          ? "Chính xác rồi!"
+          : `Chưa đúng, đáp án đúng là ${expectedResult}.`}
       </p>
 
       {usedSupports.length > 0 && (
@@ -2099,4 +1610,163 @@ function Feedback({
       )}
     </div>
   );
+}
+
+function getNormalizedExpression(
+  params: Arithmetic99WidgetParams,
+): NormalizedExpression {
+  const operation: Operation = params.operation ?? "phép cộng";
+  const layout: LayoutMode = params.layout ?? "cột dọc";
+
+  if (operation === "phép cộng") {
+    const firstTens = clamp(params.addFirstTens ?? 1, 1, 9);
+    const firstUnits = clamp(params.addFirstUnits ?? 0, 0, 9);
+    const resultTens = Math.max(
+      firstTens,
+      clamp(params.addResultTens ?? 1, 1, 9),
+    );
+    const resultUnits = Math.max(
+      firstUnits,
+      clamp(params.addResultUnits ?? 0, 0, 9),
+    );
+
+    const secondTens = clamp(resultTens - firstTens, 0, 9);
+    const secondUnits = clamp(resultUnits - firstUnits, 0, 9);
+
+    const firstNumber = firstTens * 10 + firstUnits;
+    const secondNumber = secondTens * 10 + secondUnits;
+    const expectedResult = resultTens * 10 + resultUnits;
+
+    return {
+      operation,
+      layout,
+      firstDigits: { tens: firstTens, units: firstUnits },
+      secondDigits: { tens: secondTens, units: secondUnits },
+      resultDigits: { tens: resultTens, units: resultUnits },
+      firstNumber,
+      secondNumber,
+      expectedResult,
+      hideSecondTens: secondTens === 0,
+    };
+  }
+
+  const firstTens = clamp(params.subFirstTens ?? 8, 1, 9);
+  const firstUnits = clamp(params.subFirstUnits ?? 7, 0, 9);
+  const secondTens = clamp(params.subSecondTens ?? 3, 0, firstTens);
+  const secondUnits = clamp(params.subSecondUnits ?? 4, 0, firstUnits);
+
+  const firstNumber = firstTens * 10 + firstUnits;
+  const secondNumber = secondTens * 10 + secondUnits;
+  const expectedResult = firstNumber - secondNumber;
+
+  return {
+    operation,
+    layout,
+    firstDigits: { tens: firstTens, units: firstUnits },
+    secondDigits: { tens: secondTens, units: secondUnits },
+    resultDigits: {
+      tens: Math.floor(expectedResult / 10),
+      units: expectedResult % 10,
+    },
+    firstNumber,
+    secondNumber,
+    expectedResult,
+    hideSecondTens: secondTens === 0,
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function buildChoiceOptions(
+  correct: number,
+  min: number,
+  max: number,
+  seed: number,
+): number[] {
+  const optionSet = new Set<number>();
+  optionSet.add(correct);
+
+  const offsets = [-1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -10, 10];
+  for (const offset of offsets) {
+    if (optionSet.size >= 4) break;
+    const candidate = correct + offset;
+    if (candidate >= min && candidate <= max) {
+      optionSet.add(candidate);
+    }
+  }
+
+  for (let value = min; value <= max && optionSet.size < 4; value += 1) {
+    optionSet.add(value);
+  }
+
+  return deterministicShuffle(Array.from(optionSet).slice(0, 4), seed);
+}
+
+function deterministicShuffle(values: number[], seed: number): number[] {
+  const output = [...values];
+  let currentSeed = seed || 1;
+
+  for (let i = output.length - 1; i > 0; i -= 1) {
+    currentSeed = (currentSeed * 9301 + 49297) % 233280;
+    const ratio = currentSeed / 233280;
+    const j = Math.floor(ratio * (i + 1));
+    [output[i], output[j]] = [output[j], output[i]];
+  }
+
+  return output;
+}
+
+function buildStepMoves(
+  start: number,
+  distance: number,
+  operation: "add" | "subtract",
+): StepMove[] {
+  const direction = operation === "add" ? 1 : -1;
+  const moves: StepMove[] = [];
+  const normalizedDistance = clamp(distance, 0, 9);
+
+  for (let step = 1; step <= normalizedDistance; step += 1) {
+    const from = start + direction * (step - 1);
+    const to = start + direction * step;
+    const sign = direction > 0 ? "+" : "-";
+    moves.push({ from, to, label: `${sign}${step}` });
+  }
+
+  return moves;
+}
+
+function speakVietnamese(text: string) {
+  void WidgetRuntime.requestTtsSpeak({
+    text,
+    lang: "vi-VN",
+    rate: 0.95,
+    timeoutMs: 25000,
+  }).catch(() => undefined);
+}
+
+function serializeUsedSupports(items: UsedSupport[]): string {
+  return Array.from(new Set(items)).join("|");
+}
+
+function parseUsedSupports(raw: string): UsedSupport[] {
+  if (!raw) return [];
+
+  const parsed = raw
+    .split("|")
+    .map((item) => item.trim())
+    .filter((item): item is UsedSupport =>
+      [
+        "column",
+        "read-prompt",
+        "read-result",
+        "sticks",
+        "lego",
+        "number-table",
+        "number-line",
+      ].includes(item),
+    );
+
+  return Array.from(new Set(parsed));
 }

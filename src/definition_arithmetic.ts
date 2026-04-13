@@ -14,6 +14,10 @@ export const arithmeticWidgetDefinition = defineWidget({
       .description("add: phép cộng, subtract: phép trừ")
       .random(),
 
+    addLayout: param
+      .select(["cột dọc", "hàng ngang"] as const, "cột dọc")
+      .label("Kiểu hiển thị phép tính"),
+
     addFirstNumber: param
       .number(4)
       .label("Số thứ nhất")
